@@ -1,0 +1,375 @@
+use reqwest::Client;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+    process::{Command, Stdio},
+    sync::atomic::{AtomicBool, Ordering},
+    time::{Duration, Instant},
+};
+use tauri::{path::BaseDirectory, AppHandle, Emitter, Manager, State};
+use tokio::sync::Mutex;
+
+const STARTUP_TIMEOUT: Duration = Duration::from_secs(30);
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(45);
+const STARTUP_RETRY: Duration = Duration::from_millis(150);
+
+#[derive(Clone, Deserialize)]
+struct Endpoint {
+    port: u16,
+    token: String,
+    pid: u32,
+}
+
+impl Endpoint {
+    fn url(&self, path: &str) -> String {
+        format!("http://127.0.0.1:{}{}", self.port, path)
+    }
+}
+
+#[derive(Deserialize)]
+struct Health {
+    pid: u32,
+}
+
+#[derive(Serialize)]
+pub struct DesktopResponse {
+    status: u16,
+    body: Value,
+}
+
+pub struct DesktopRuntime {
+    client: Client,
+    directory: PathBuf,
+    endpoint: Mutex<Option<Endpoint>>,
+    quitting: AtomicBool,
+}
+
+impl DesktopRuntime {
+    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+        let directory = env::var_os("SILVER_DATA_DIR")
+            .map(PathBuf::from)
+            .or_else(|| env::var_os("APPDATA").map(|path| PathBuf::from(path).join("Silver")))
+            .ok_or("无法确定 Silver 应用数据目录。")?;
+        let client = Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .no_proxy()
+            .connect_timeout(Duration::from_secs(2))
+            .read_timeout(Duration::from_secs(60))
+            .build()?;
+        Ok(Self {
+            client,
+            directory,
+            endpoint: Mutex::new(None),
+            quitting: AtomicBool::new(false),
+        })
+    }
+
+    pub fn is_quitting(&self) -> bool {
+        self.quitting.load(Ordering::Acquire)
+    }
+
+    async fn read_endpoint(&self) -> Option<Endpoint> {
+        let path = self.directory.join("endpoint.json");
+        let bytes = tokio::fs::read(path).await.ok()?;
+        let endpoint: Endpoint = serde_json::from_slice(&bytes).ok()?;
+        (endpoint.port != 0 && endpoint.pid != 0 && !endpoint.token.is_empty()).then_some(endpoint)
+    }
+
+    async fn ready(&self, endpoint: &Endpoint) -> bool {
+        let result = self
+            .client
+            .get(endpoint.url("/health"))
+            .bearer_auth(&endpoint.token)
+            .timeout(Duration::from_millis(500))
+            .send()
+            .await;
+        if let Ok(response) = result {
+            if response.status().is_success() {
+                return response
+                    .json::<Health>()
+                    .await
+                    .is_ok_and(|health| health.pid == endpoint.pid);
+            }
+        }
+        false
+    }
+
+    async fn ensure_endpoint(&self, app: &AppHandle) -> Result<Endpoint, String> {
+        if self.is_quitting() {
+            return Err("Silver 正在退出。".into());
+        }
+        let mut cached = self.endpoint.lock().await;
+        if let Some(endpoint) = cached.as_ref() {
+            return Ok(endpoint.clone());
+        }
+        if let Some(endpoint) = self.read_endpoint().await {
+            if self.ready(&endpoint).await {
+                *cached = Some(endpoint.clone());
+                return Ok(endpoint);
+            }
+        }
+        if self.is_quitting() {
+            return Err("Silver 正在退出。".into());
+        }
+        tokio::fs::create_dir_all(&self.directory)
+            .await
+            .map_err(|err| format!("无法创建 Silver 应用数据目录：{err}"))?;
+        let mut child = spawn_runtime(app, &self.directory)?;
+        let deadline = Instant::now() + STARTUP_TIMEOUT;
+        let mut exit_message = None;
+        while Instant::now() < deadline && !self.is_quitting() {
+            if let Some(endpoint) = self.read_endpoint().await {
+                if self.ready(&endpoint).await {
+                    *cached = Some(endpoint.clone());
+                    return Ok(endpoint);
+                }
+            }
+            if exit_message.is_none() {
+                if let Ok(Some(status)) = child.try_wait() {
+                    // Another shell can start the service while this process is losing its lock.
+                    exit_message = Some(format!("本机 Silver 运行时未能启动（{status}）。"));
+                }
+            }
+            tokio::time::sleep(STARTUP_RETRY).await;
+        }
+        Err(exit_message.unwrap_or_else(|| "等待本机 Silver 运行时启动超时。".into()))
+    }
+
+    async fn forget_endpoint(&self, endpoint: &Endpoint) {
+        let mut cached = self.endpoint.lock().await;
+        if cached
+            .as_ref()
+            .is_some_and(|prior| prior.token == endpoint.token)
+        {
+            *cached = None;
+        }
+    }
+
+    pub async fn watch(&self, app: &AppHandle) {
+        let mut previous_error = None;
+        while !self.is_quitting() {
+            match self.ensure_endpoint(app).await {
+                Ok(endpoint) => {
+                    previous_error = None;
+                    if let Ok(response) = self
+                        .client
+                        .get(endpoint.url("/events"))
+                        .bearer_auth(&endpoint.token)
+                        .send()
+                        .await
+                    {
+                        if response.status().is_success() {
+                            receive_events(response, app).await;
+                        }
+                    }
+                    self.forget_endpoint(&endpoint).await;
+                }
+                Err(error) => {
+                    if previous_error.as_deref() != Some(error.as_str()) {
+                        let _ = tokio::fs::write(self.directory.join("startup-error.log"), &error)
+                            .await;
+                        previous_error = Some(error);
+                    }
+                }
+            }
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
+    }
+
+    pub async fn shutdown(&self) -> Result<(), String> {
+        if self.quitting.swap(true, Ordering::AcqRel) {
+            return Err("Silver 正在退出。".into());
+        }
+        let endpoint = {
+            let cached = self.endpoint.lock().await;
+            self.read_endpoint().await.or_else(|| cached.clone())
+        };
+        let Some(endpoint) = endpoint else {
+            return Ok(());
+        };
+        let request = self
+            .client
+            .post(endpoint.url("/shutdown"))
+            .bearer_auth(&endpoint.token)
+            .timeout(REQUEST_TIMEOUT)
+            .send()
+            .await;
+        if request.is_ok_and(|response| response.status().is_success()) {
+            let deadline = Instant::now() + REQUEST_TIMEOUT;
+            while self
+                .read_endpoint()
+                .await
+                .is_some_and(|current| current.pid == endpoint.pid)
+            {
+                if Instant::now() >= deadline {
+                    self.quitting.store(false, Ordering::Release);
+                    return Err("本机运行时仍在保存，请稍后重试。".into());
+                }
+                tokio::time::sleep(STARTUP_RETRY).await;
+            }
+            return Ok(());
+        }
+        if self.read_endpoint().await.is_none() {
+            return Ok(());
+        }
+        self.quitting.store(false, Ordering::Release);
+        Err("本机运行时仍在运行，无法确认退出。请稍后重试。".into())
+    }
+}
+
+fn spawn_runtime(app: &AppHandle, directory: &Path) -> Result<std::process::Child, String> {
+    let resources = app
+        .path()
+        .resolve("desktop-runtime", BaseDirectory::Resource)
+        .map_err(|err| format!("无法定位 Silver 运行时：{err}"))?;
+    let (node, entry, npm) = if cfg!(debug_assertions) {
+        let project = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let path = env::var_os("SILVER_NODE").map(PathBuf::from);
+        let npm = path
+            .as_deref()
+            .and_then(Path::parent)
+            .map(|path| path.join("node_modules/npm/bin/npm-cli.js"));
+        (
+            path.unwrap_or_else(|| PathBuf::from("node.exe")),
+            project.join("dist-cli/silver.mjs"),
+            npm,
+        )
+    } else {
+        let resources = if resources.join("silver.mjs").is_file() {
+            resources
+        } else {
+            env::current_exe()
+                .ok()
+                .and_then(|exe| exe.parent().map(|folder| folder.join("desktop-runtime")))
+                .filter(|folder| folder.join("silver.mjs").is_file())
+                .unwrap_or(resources)
+        };
+        (
+            resources.join("node.exe"),
+            resources.join("silver.mjs"),
+            Some(resources.join("node_modules/npm/bin/npm-cli.js")),
+        )
+    };
+    if !entry.is_file() {
+        return Err(format!("缺少 Silver CLI 程序文件：{}", entry.display()));
+    }
+    let log = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(directory.join("runtime-error.log"))
+        .map_err(|err| format!("无法打开运行时日志：{err}"))?;
+    // Tauri resource paths may use the Windows verbatim namespace. Node's CLI
+    // entrypoint resolution expects a normal DOS path when one is available.
+    let node = dunce::simplified(&node);
+    let entry = dunce::simplified(&entry);
+    let mut command = Command::new(node);
+    command
+        .arg(entry)
+        .arg("serve")
+        .env("SILVER_DATA_DIR", directory)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::from(log));
+    if let Some(npm) = npm {
+        command.env("SILVER_NPM_CLI", dunce::simplified(&npm));
+    }
+    if !cfg!(debug_assertions) {
+        let paths = env::var_os("PATH").unwrap_or_default();
+        let path_entries = node
+            .parent()
+            .map(Path::to_path_buf)
+            .into_iter()
+            .chain(env::split_paths(&paths));
+        if let Ok(path) = env::join_paths(path_entries) {
+            command.env("PATH", path);
+        }
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
+        command.creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP);
+    }
+    command
+        .spawn()
+        .map_err(|err| format!("无法运行 Silver CLI：{err}"))
+}
+
+async fn receive_events(mut response: reqwest::Response, app: &AppHandle) {
+    let mut pending = Vec::new();
+    let mut data = Vec::new();
+    while let Ok(Some(chunk)) = response.chunk().await {
+        pending.extend_from_slice(&chunk);
+        let mut read = 0;
+        for end in pending
+            .iter()
+            .enumerate()
+            .filter_map(|(i, &byte)| (byte == b'\n').then_some(i))
+        {
+            let mut line = &pending[read..end];
+            read = end + 1;
+            line = line.strip_suffix(b"\r").unwrap_or(line);
+            if line.is_empty() {
+                if !data.is_empty() {
+                    if let Ok(value) = serde_json::from_slice::<Value>(&data) {
+                        let _ = app.emit("silver://state", value);
+                    }
+                    data.clear();
+                }
+            } else if let Some(payload) = line.strip_prefix(b"data:") {
+                if !data.is_empty() {
+                    data.push(b'\n');
+                }
+                data.extend_from_slice(payload.strip_prefix(b" ").unwrap_or(payload));
+            }
+        }
+        pending.drain(..read);
+    }
+}
+
+#[tauri::command]
+pub async fn desktop_request(
+    app: AppHandle,
+    runtime: State<'_, DesktopRuntime>,
+    method: String,
+    path: String,
+    body: Option<Value>,
+) -> Result<DesktopResponse, String> {
+    let method = match (method.as_str(), path.as_str()) {
+        ("GET", "/state") => reqwest::Method::GET,
+        ("POST", "/action") => reqwest::Method::POST,
+        _ => return Err("此 Silver 桌面请求不受支持。".into()),
+    };
+    let endpoint = runtime.ensure_endpoint(&app).await?;
+    let mut request = runtime
+        .client
+        .request(method, endpoint.url(&path))
+        .bearer_auth(&endpoint.token)
+        .timeout(REQUEST_TIMEOUT);
+    if let Some(body) = body {
+        request = request.json(&body);
+    }
+    match request.send().await {
+        Ok(response) => {
+            let status = response.status();
+            if status == reqwest::StatusCode::UNAUTHORIZED {
+                runtime.forget_endpoint(&endpoint).await;
+            }
+            let body = response
+                .json::<Value>()
+                .await
+                .map_err(|_| "本机 Silver 运行时返回了无效的数据。".to_owned())?;
+            Ok(DesktopResponse {
+                status: status.as_u16(),
+                body,
+            })
+        }
+        Err(_) => {
+            runtime.forget_endpoint(&endpoint).await;
+            Err("与本机 Silver 运行时的连接中断。".into())
+        }
+    }
+}

@@ -1,0 +1,15 @@
+node_modules/
+dist/
+dist-cli/
+*.tsbuildinfo
+
+src-tauri/target/
+src-tauri/desktop-runtime/
+src-tauri/gen/
+
+.claude/
+.env
+.env.*
+*.log
+Thumbs.db
+Desktop.ini
