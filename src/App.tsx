@@ -3,16 +3,18 @@ import { SilverProvider, useSilver } from "./state/SilverContext";
 import { Sidebar } from "./shell/Sidebar";
 import { Editor } from "./shell/Editor";
 import { AgentPane } from "./shell/AgentPane";
+import { WorkspaceSearch, type WorkspaceSearchMode } from "./shell/WorkspaceSearch";
 import type { InspectorTab } from "./model/types";
 
 type AgentTab = "chat" | InspectorTab;
 
 function Shell() {
-  const { state, currentThread, dispatch, newThread, stop } = useSilver();
+  const { state, currentThread, dispatch, newThread, stop, openFolder, previewFile, attachToComposer } = useSilver();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarOverlay, setSidebarOverlay] = useState(false);
   const [agentOverlay, setAgentOverlay] = useState(false);
   const [agentTab, setAgentTab] = useState<AgentTab>("chat");
+  const [search, setSearch] = useState<WorkspaceSearchMode>();
 
   useEffect(() => {
     const root = document.documentElement;
@@ -60,6 +62,14 @@ function Shell() {
     function onKey(event: KeyboardEvent) {
       if (event.defaultPrevented || event.isComposing) return;
       const narrow = window.matchMedia(narrowQuery).matches;
+      const key = event.key.toLowerCase();
+      const shortcut = (event.ctrlKey || event.metaKey) && !event.altKey;
+      if (shortcut && ((key === "p" && !event.shiftKey) || (key === "f" && event.shiftKey))) {
+        event.preventDefault();
+        setSearch(key === "p" ? "files" : "text");
+        return;
+      }
+      if (search) return;
       if (event.key === "Escape") {
         if (currentThread && stop(currentThread.id)) event.preventDefault();
         else if (narrow && (sidebarOverlay || agentOverlay)) {
@@ -68,8 +78,8 @@ function Shell() {
         } else if (agentTab !== "chat") setAgentTab("chat");
         return;
       }
-      if ((!event.ctrlKey && !event.metaKey) || event.shiftKey || event.altKey) return;
-      switch (event.key.toLowerCase()) {
+      if (!shortcut || event.shiftKey) return;
+      switch (key) {
         case "n":
           event.preventDefault();
           newThread(state.lastPresetId);
@@ -129,6 +139,13 @@ function Shell() {
         showSidebarButton={sidebarCollapsed || sidebarOverlay}
         showAgentButton
         onOpenSidebar={toggleSidebar}
+        onOpenQuickFiles={() => setSearch("files")}
+        onAttachFile={(path) => {
+          dispatch({ type: "SET_PROVIDER_PANEL_OPEN", open: false });
+          setAgentTab("chat");
+          openAgent();
+          attachToComposer(path);
+        }}
         onOpenAgent={() => {
           if (window.matchMedia(narrowQuery).matches) openAgent();
           else setAgentTab("chat");
@@ -137,6 +154,18 @@ function Shell() {
       <div className={agentClass}>
         <AgentPane tab={agentTab} onTab={setAgentTab} />
       </div>
+      {search && (
+        <WorkspaceSearch
+          mode={search}
+          workspace={currentThread?.workspace}
+          onMode={setSearch}
+          onClose={() => setSearch(undefined)}
+          onOpenFolder={() => void openFolder()}
+          onOpen={(path, line) => {
+            if (currentThread) void previewFile(currentThread.id, path, line);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -1,13 +1,14 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { desktopAction, desktopAvailable, desktopState, listenDesktop, type DesktopSnapshot } from "../model/desktopClient";
 import { initialState, type Action, type SilverState } from "../model/silverState";
-import type { Brief, Thread, WorkspaceSummary } from "../model/types";
+import type { Brief, ChatDraft, Thread, WorkspaceSummary } from "../model/types";
 import type { ProviderConfig } from "../provider/presets";
-import { readWorkspaceFile, selectWorkspace, workspaceErrorText } from "../model/workspace";
+import { notifyWorkspaceChange, readWorkspaceFile, selectWorkspace, workspaceErrorText } from "../model/workspace";
 
 type UIAction = Exclude<Action, { type: "UPDATE_THREAD" | "NEW_THREAD" | "SET_PROVIDERS" | "REMEMBER_PRESET" }>;
-type FilePreview = { threadId: string; path: string; body?: string; error?: string };
+type FilePreview = { threadId: string; workspaceId: string; path: string; line?: number; body?: string; error?: string };
 type ComposerPrompt = { threadId: string; text: string };
+type ComposerAttachment = { threadId: string; workspaceId: string; path: string };
 
 interface SilverContextValue {
   state: SilverState;
@@ -18,10 +19,14 @@ interface SilverContextValue {
   openSample: () => void;
   isGenerating: (threadId: string) => boolean;
   stop: (threadId: string) => boolean;
-  sendMessage: (threadId: string | undefined, text: string, attachments?: string[]) => void;
+  submitComposer: (threadId: string | undefined, draft: ChatDraft) => Promise<void>;
+  saveDraft: (threadId: string, draft: ChatDraft) => Promise<void>;
   chooseMessage: (threadId: string, messageId: string, choice: string) => void;
   composerPrompt?: ComposerPrompt;
   consumeComposerPrompt: (prompt: ComposerPrompt) => void;
+  composerAttachment?: ComposerAttachment;
+  attachToComposer: (path: string) => void;
+  consumeComposerAttachment: (request: ComposerAttachment) => void;
   changePreset: (threadId: string | undefined, presetId: string) => void;
   selectModel: (threadId: string | undefined, modelId: string, modelName?: string) => void;
   retryMessage: (threadId: string, messageId: string) => void;
@@ -38,7 +43,7 @@ interface SilverContextValue {
   saveProvider: (config: ProviderConfig, replacementKey?: string) => Promise<void>;
   testProvider: (config: ProviderConfig, replacementKey?: string) => Promise<string[]>;
   filePreview: FilePreview | null;
-  previewFile: (threadId: string, path: string) => Promise<void>;
+  previewFile: (threadId: string, path: string, line?: number) => Promise<void>;
   closeFilePreview: () => void;
 }
 
@@ -51,7 +56,9 @@ export function SilverProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState("");
   const [filePreview, setFilePreview] = useState<FilePreview | null>(null);
   const [composerPrompt, setComposerPrompt] = useState<ComposerPrompt>();
+  const [composerAttachment, setComposerAttachment] = useState<ComposerAttachment>();
   const previewRequest = useRef<AbortController>();
+  const previousVersions = useRef<DesktopSnapshot["workspaceVersions"]>();
 
   useEffect(() => {
     if (!desktopAvailable()) {
@@ -62,14 +69,17 @@ export function SilverProvider({ children }: { children: ReactNode }) {
     let unlisten: (() => void) | undefined;
     function accept(next: DesktopSnapshot) {
       if (!mounted) return;
-      setSnapshot((current) => next.revision >= current.revision ? next : current);
+      setSnapshot((current) => next.revision > current.revision ? next : current);
       setConnection("ready");
       setConnectionError("");
     }
+    let retrieving = false;
     function refresh() {
+      if (retrieving) return;
+      retrieving = true;
       void desktopState().then(accept, (failure: unknown) => {
         if (mounted) setConnectionError(typeof failure === "string" ? failure : workspaceErrorText(failure));
-      });
+      }).finally(() => { retrieving = false; });
     }
     void listenDesktop(accept).then((dispose) => {
       if (mounted) unlisten = dispose;
@@ -83,6 +93,14 @@ export function SilverProvider({ children }: { children: ReactNode }) {
       window.clearInterval(timer);
     };
   }, []);
+
+  useEffect(() => {
+    const previous = previousVersions.current;
+    previousVersions.current = snapshot.workspaceVersions;
+    for (const [workspaceId, version] of Object.entries(snapshot.workspaceVersions ?? {})) {
+      if (version !== (previous?.[workspaceId] ?? 0)) notifyWorkspaceChange(workspaceId);
+    }
+  }, [snapshot.workspaceVersions]);
 
   function action(name: string, ...args: unknown[]) {
     setError("");
@@ -99,18 +117,19 @@ export function SilverProvider({ children }: { children: ReactNode }) {
     action("dispatch", value);
   }
 
-  async function previewFile(threadId: string, path: string) {
+  async function previewFile(threadId: string, path: string, line?: number) {
     const workspace = snapshot.state.threads.find(({ id }) => id === threadId)?.workspace;
     if (!workspace) return;
     previewRequest.current?.abort();
     const controller = new AbortController();
     previewRequest.current = controller;
-    setFilePreview({ threadId, path });
+    const preview = { threadId, workspaceId: workspace.id, path, line };
+    setFilePreview(preview);
     try {
       const body = await readWorkspaceFile(workspace, path);
-      if (!controller.signal.aborted) setFilePreview({ threadId, path, body });
+      if (!controller.signal.aborted) setFilePreview({ ...preview, body });
     } catch (failure) {
-      if (!controller.signal.aborted) setFilePreview({ threadId, path, error: workspaceErrorText(failure) });
+      if (!controller.signal.aborted) setFilePreview({ ...preview, error: workspaceErrorText(failure) });
     }
   }
 
@@ -137,7 +156,16 @@ export function SilverProvider({ children }: { children: ReactNode }) {
         action("stop", threadId);
         return true;
       },
-      sendMessage: (...args) => action("sendMessage", ...args),
+      submitComposer: (...args) => desktopAction("submitComposer", ...args),
+      saveDraft: (...args) => desktopAction("saveDraft", ...args),
+      composerAttachment,
+      attachToComposer: (path) => {
+        const thread = state.threads.find(({ id }) => id === state.currentThreadId);
+        if (thread?.workspace) {
+          setComposerAttachment({ threadId: thread.id, workspaceId: thread.workspace.id, path });
+        }
+      },
+      consumeComposerAttachment: (request) => setComposerAttachment((current) => current === request ? undefined : current),
       changePreset: (...args) => action("changePreset", ...args),
       selectModel: (...args) => action("selectModel", ...args),
       retryMessage: (...args) => action("retryMessage", ...args),

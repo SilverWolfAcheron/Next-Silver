@@ -174,14 +174,32 @@ test("desktop CLI runs six rounds, reattaches, and resumes active seats without 
     });
     assert.equal(feed.status, 200);
     await action("bindWorkspace", threadId, bound.id);
+    const found = await action("workspace.searchText", bound.id, "independent", 10);
+    assert.deepEqual(found, [{ path: "review.txt", line: 1, text: "independent context" }]);
+    const draft = { text: "在当前工作区持续修复并跑过检查", attachments: ["source.txt"], workspaceId: bound.id };
+    await action("saveDraft", threadId, draft);
+    assert.deepEqual((await call("/state")).state.threads.find(({ id }) => id === threadId).draft, draft);
+    const savedDraft = JSON.parse(await readFile(join(directory, "sessions.json"), "utf8"));
+    assert.deepEqual(savedDraft.threads.find(({ id }) => id === threadId).draft, draft);
+    const alternateFolder = join(fixture, "alternate");
+    await mkdir(alternateFolder);
+    const alternate = await action("workspace.bind", alternateFolder);
+    await action("bindWorkspace", threadId, alternate.id);
+    await assert.rejects(action("submitComposer", threadId, draft), /工作区已更换/u);
+    const rebound = (await call("/state")).state.threads.find(({ id }) => id === threadId);
+    assert.equal(rebound.draft, undefined);
+    assert.equal(rebound.messages.length, 0);
+    await action("bindWorkspace", threadId, bound.id);
     await action("saveProvider", {
       id: "newapi", label: "New API", protocol: "openai", model: "fixture",
       baseUrl: `http://127.0.0.1:${gateway.address().port}`,
     }, fixtureKey);
     await action("selectModel", threadId, "newapi", "fixture");
-    await action("sendMessage", threadId, "在当前工作区持续修复并跑过检查");
+    await action("submitComposer", threadId, draft);
     const thread = async () => (await call("/state")).state.threads.find(({ id }) => id === threadId);
     const brief = await until(async () => (await thread()).pendingConfirmation, "No brief confirmation");
+    assert.equal((await thread()).draft, undefined);
+    assert.deepEqual((await thread()).messages.find(({ role }) => role === "user").attachments, ["source.txt"]);
     await action("resolveConfirmation", threadId, brief.messageId, true);
     await until(() => firstHeld, "First round was not held");
     select.abort();
@@ -211,6 +229,7 @@ test("desktop CLI runs six rounds, reattaches, and resumes active seats without 
     assert.equal(completed.runs.length, 1);
     assert.equal(completed.runs[0].iterations.length, 6);
     assert.equal(completed.runs[0].iterations.at(-1).verdict, "done");
+    assert.ok((await call("/state")).workspaceVersions[bound.id] > 0);
     assert.equal(completed.artifacts.filter(({ title }) => title === "npm test").length, 6);
     assert.equal(await readFile(join(workspace, "source.txt"), "utf8"), "round-6\r\n");
     assert.equal((await readFile(join(workspace, "checks.log"), "utf8")).trim().split("\n").length, 18);

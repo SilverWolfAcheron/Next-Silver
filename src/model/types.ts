@@ -124,6 +124,12 @@ export interface Artifact {
 
 export type IntakeStep = "questioning" | "confirmed" | "done";
 
+export interface ChatDraft {
+  text: string;
+  attachments: string[];
+  workspaceId?: string;
+}
+
 export interface Thread {
   id: string;
   title: string;
@@ -144,6 +150,7 @@ export interface Thread {
   pendingConfirmation?: PendingConfirmation;
   pendingPlan?: { messageId: string; revised: boolean };
   queuedMessages?: ChatMessage[];
+  draft?: ChatDraft;
   activeRequest?: { kind: "message" | "plan"; messageId: string; attempt: string; revised?: boolean; replyId?: string };
   workspace?: import("./workspace").WorkspaceSummary;
 }

@@ -6,6 +6,7 @@ export interface DesktopSnapshot {
   revision: number;
   state: SilverState;
   busyThreads: string[];
+  workspaceVersions?: Record<string, number>;
 }
 
 async function request<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {

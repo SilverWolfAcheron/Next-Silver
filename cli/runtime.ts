@@ -2,16 +2,17 @@ import { initialState, makeThread, reduceSilver, type Action, type SilverState }
 import { SAMPLE_PCB_THREAD } from "../src/model/samples";
 import { importThreads } from "../src/model/localData";
 import { getPreset } from "../src/model/presets";
-import { applyDiff, decideDiffFile, diffNeedsConfirmation, diffPolicyError, parseDiff } from "../src/model/diff";
+import { applyDiff, decideDiffFile, diffNeedsConfirmation, diffPolicyError, isDiffPath, parseDiff } from "../src/model/diff";
 import { makeClient, type ProviderConfig } from "../src/provider/presets";
-import type { Brief, Thread, WorkspaceSummary } from "../src/model/types";
+import type { Brief, ChatDraft, Thread, WorkspaceSummary } from "../src/model/types";
 import { describeProviderError } from "../src/provider/client";
 import type { DesktopSnapshot } from "../src/model/desktopClient";
 import { createConversation } from "./conversation";
 import { createRequestJournal } from "./journal";
 import {
   bindWorkspace, exportWorkspaceDocument, listWorkspace, readWorkspaceFile, readWorkspaceFileIfExists,
-  requestWorkspaceAccess, searchWorkspaceFiles, writeWorkspaceFile, lookupWorkspace,
+  requestWorkspaceAccess, searchWorkspaceFiles, searchWorkspaceText, subscribeWorkspaceChanges,
+  writeWorkspaceFile, lookupWorkspace,
 } from "./workspace";
 import { checkName, runCheck } from "./check";
 
@@ -25,19 +26,35 @@ function record(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+function readDraft(value: unknown, thread: Thread | undefined): ChatDraft {
+  const draft = record(value);
+  const workspaceId = thread?.workspace?.id;
+  if ((draft.workspaceId ?? undefined) !== workspaceId) throw new Error("工作区已更换。请重新选择附件。");
+  const attachments = workspaceId && Array.isArray(draft.attachments)
+    ? [...new Set(draft.attachments.filter((path): path is string => typeof path === "string" && isDiffPath(path)))].slice(0, 8)
+    : [];
+  const input = text(draft.text);
+  if (input.length > 100_000) throw new Error("对话草稿不能超过 100,000 个字符。");
+  return { text: input, attachments, workspaceId };
+}
+
 export function createRuntime(saved: Partial<SilverState> | undefined, onChange: (state: SilverState) => void, dataDir: string) {
   const initial = initialState(saved);
   const latest = { current: initial };
   const listeners = new Set<(snapshot: DesktopSnapshot) => void>();
   const operation = createRequestJournal(dataDir);
   const busyBindings = new Set<string>();
+  const watchedWorkspaces = new Map<string, () => void>();
+  const workspaceVersions = new Map<string, number>();
+  let workspacePublish: ReturnType<typeof setTimeout> | undefined;
   let revision = Date.now() * 1_000;
   let closing = false;
 
   function getState(): DesktopSnapshot {
     const state = latest.current;
     return {
-      revision, busyThreads: state.threads.filter(({ id }) => conversation.isGenerating(id)).map(({ id }) => id),
+      revision, workspaceVersions: Object.fromEntries(workspaceVersions),
+      busyThreads: state.threads.filter(({ id }) => conversation.isGenerating(id)).map(({ id }) => id),
       state: {
         ...state,
         providers: state.providers.map((provider) => ({ ...provider, key: "", hasKey: Boolean(provider.key.trim()) })),
@@ -63,8 +80,31 @@ export function createRuntime(saved: Partial<SilverState> | undefined, onChange:
     if (next === latest.current) return;
     onChange(next);
     latest.current = next;
+    watchWorkspaces();
     publish();
   }
+
+  function watchWorkspaces() {
+    const active = new Set(latest.current.threads.flatMap(({ workspace }) => workspace ? [workspace.id] : []));
+    for (const [key, dispose] of watchedWorkspaces) {
+      if (active.has(key)) continue;
+      dispose();
+      watchedWorkspaces.delete(key);
+      workspaceVersions.delete(key);
+    }
+    for (const { workspace } of latest.current.threads) {
+      if (!workspace || watchedWorkspaces.has(workspace.id)) continue;
+      const unsubscribe = subscribeWorkspaceChanges(workspace, () => {
+        workspaceVersions.set(workspace.id, (workspaceVersions.get(workspace.id) ?? 0) + 1);
+        workspacePublish ??= setTimeout(() => {
+          workspacePublish = undefined;
+          publish();
+        }, 100);
+      });
+      watchedWorkspaces.set(workspace.id, unsubscribe);
+    }
+  }
+  watchWorkspaces();
 
   function newThread(preset: string) {
     const thread = makeThread(preset);
@@ -179,6 +219,20 @@ export function createRuntime(saved: Partial<SilverState> | undefined, onChange:
         }
         return commit({ type: "NEW_THREAD", thread: { ...SAMPLE_PCB_THREAD, updatedAt: Date.now() } });
       case "sendMessage": return conversation.sendMessage(a ? id(a) : undefined, text(b), Array.isArray(c) ? c.filter((v): v is string => typeof v === "string").slice(0, 8) : []);
+      case "saveDraft": {
+        const thread = latest.current.threads.find(({ id: key }) => key === id(a));
+        if (!thread) return;
+        const draft = readDraft(b, thread);
+        const next = draft.text || draft.attachments.length ? draft : undefined;
+        if (JSON.stringify(thread.draft) === JSON.stringify(next)) return;
+        return edit(thread.id, (current) => ({ ...current, draft: next }));
+      }
+      case "submitComposer": {
+        const thread = a ? find(id(a)) : undefined;
+        const draft = readDraft(b, thread);
+        if (!draft.text.trim()) return;
+        return conversation.sendMessage(thread?.id, draft.text, draft.attachments, true);
+      }
       case "selectModel": return conversation.selectModel(a ? id(a) : undefined, id(b), text(c));
       case "changePreset": return conversation.changePreset(a ? id(a) : undefined, text(b));
       case "retryMessage": return conversation.retryMessage(id(a), id(b));
@@ -193,7 +247,7 @@ export function createRuntime(saved: Partial<SilverState> | undefined, onChange:
         if (conversation.isGenerating(thread.id)) throw new Error("请先停止该对话的工作项，再更换工作区。");
         const checked = await workspace(id(b));
         return edit(thread.id, (current) => ({
-          ...current, workspace: checked,
+          ...current, workspace: checked, draft: current.workspace?.id === checked.id ? current.draft : undefined,
           updatedAt: Date.now(),
         }));
       }
@@ -221,6 +275,7 @@ export function createRuntime(saved: Partial<SilverState> | undefined, onChange:
       case "workspace.list": return listWorkspace(await workspace(id(a)), text(b));
       case "workspace.read": return readWorkspaceFile(await workspace(id(a)), text(b));
       case "workspace.search": return searchWorkspaceFiles(await workspace(id(a)), text(b), typeof c === "number" ? c : 24);
+      case "workspace.searchText": return searchWorkspaceText(await workspace(id(a)), text(b), typeof c === "number" ? c : 40);
       case "workspace.export": {
         const binding = await workspace(id(a));
         if (!latest.current.threads.some((thread) => thread.workspace?.id === binding.id && getPreset(thread.presetId).writePolicy !== "none")) {
@@ -243,6 +298,8 @@ export function createRuntime(saved: Partial<SilverState> | undefined, onChange:
     async shutdown() {
       closing = true;
       await conversation.shutdown();
+      clearTimeout(workspacePublish);
+      watchedWorkspaces.forEach((dispose) => dispose());
       onChange(latest.current);
     },
   };

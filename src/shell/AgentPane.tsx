@@ -18,7 +18,9 @@ interface AgentPaneProps {
 }
 
 export function AgentPane({ tab, onTab }: AgentPaneProps) {
-  const { state, currentThread, dispatch } = useSilver();
+  const { state, currentThread, dispatch, isGenerating } = useSilver();
+  const confirmation = currentThread?.pendingConfirmation;
+  const running = currentThread ? isGenerating(currentThread.id) : false;
 
   function select(next: "chat" | InspectorTab) {
     onTab(next);
@@ -45,6 +47,15 @@ export function AgentPane({ tab, onTab }: AgentPaneProps) {
           </button>
         ))}
       </div>
+      {tab !== "chat" && confirmation && (
+        <button type="button" onClick={() => select("chat")}
+          className="min-h-11 shrink-0 border-b border-separator px-3 text-left text-[13px] text-accent hover:bg-fill">
+          有一项待确认，查看对话
+        </button>
+      )}
+      {tab === "chat" && running && !confirmation && (
+        <p role="status" className="shrink-0 border-b border-separator px-3 py-2 text-[13px] text-secondary">运行中</p>
+      )}
       <div className="flex min-h-0 flex-1 flex-col">
         {tab === "chat" || !currentThread ? <ThreadView /> : <Inspector embedded />}
       </div>

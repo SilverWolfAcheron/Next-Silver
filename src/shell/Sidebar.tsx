@@ -9,7 +9,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ onNavigate }: SidebarProps) {
-  const { state, currentThread, dispatch, newThread, previewFile, filePreview, closeFilePreview, attachWorkspace } = useSilver();
+  const { state, currentThread, dispatch, newThread, previewFile, filePreview, closeFilePreview, attachWorkspace, isGenerating } = useSilver();
   const [query, setQuery] = useState("");
   const [menuThreadId, setMenuThreadId] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<{ id: string; title: string } | null>(null);
@@ -142,7 +142,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
                     <div className="min-w-0 flex-1">
                       <SideRow
                         label={thread.title}
-                        meta={thread.pinned ? "置顶" : undefined}
+                        meta={thread.pendingConfirmation ? "待确认" : isGenerating(thread.id) ? "运行中" : thread.pinned ? "置顶" : undefined}
                         selected={thread.id === currentThread?.id}
                         onClick={() => {
                           setMenuThreadId(null);

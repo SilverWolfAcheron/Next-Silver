@@ -572,7 +572,7 @@ export function createConversation(
       return;
     }
     const unfinished = thread.runs.find((run) => run.status === "in_progress" &&
-      run.iterations?.length && !jobs.current.get(threadId)?.has(run.id));
+      !jobs.current.get(threadId)?.has(run.id));
     if (unfinished) {
       runItem(threadId, unfinished.id);
       return;
@@ -605,7 +605,7 @@ export function createConversation(
     group.forEach(({ id }) => runItem(threadId, id));
   }
 
-  function sendMessage(threadId: string | undefined, text: string, attachments: string[] = []) {
+  function sendMessage(threadId: string | undefined, text: string, attachments: string[] = [], clearDraft = false) {
     const content = text.trim();
     if (!content) return;
     const thread = threadId ? find(threadId) : newThread("develop");
@@ -617,6 +617,7 @@ export function createConversation(
     };
     edit(thread.id, (current) => ({
       ...current,
+      draft: clearDraft ? undefined : current.draft,
       title: !current.titleEdited && !current.messages.some(({ role }) => role === "user") && !current.queuedMessages?.length
         ? Array.from(content.replace(/\s+/g, " ")).slice(0, 20).join("") : current.title,
       queuedMessages: [...(current.queuedMessages ?? []), message],
@@ -709,13 +710,17 @@ export function createConversation(
       ...thread, runs: thread.runs.map((run) => run.id === runId ? {
         ...run, seats: retrySeats(run.seats).map((seat) => seat.status === "pending"
           ? { ...seat, attempt: crypto.randomUUID() } : seat),
-        iterations: run.iterations?.map((iteration, index, all) => index === all.length - 1 &&
-          (iteration.status === "blocked" || iteration.status === "paused")
-          ? { ...iteration, status: "in_progress", note: "正在从保存的阶段重试",
-            attempt: crypto.randomUUID() } : iteration),
+        iterations: run.iterations?.map((iteration, index, all) => {
+          if (index !== all.length - 1 || (iteration.status !== "blocked" && iteration.status !== "paused")) return iteration;
+          if (iteration.approval === "apply") {
+            return { ...iteration, status: "in_progress", note: "等待确认破坏性变更" };
+          }
+          return { ...iteration, status: "in_progress", note: "正在从保存的阶段重试", attempt: crypto.randomUUID() };
+        }),
       } : run),
     }));
     runItem(threadId, runId);
+    pump(threadId);
   }
 
   function resolveConfirmation(threadId: string, messageId: string, accepted: boolean) {

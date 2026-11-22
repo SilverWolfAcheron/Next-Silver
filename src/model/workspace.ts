@@ -34,6 +34,10 @@ export function subscribeWorkspaceChanges(workspace: WorkspaceSummary, listener:
   return () => changes.removeEventListener(workspace.id, listener);
 }
 
+export function notifyWorkspaceChange(workspaceId: string) {
+  changes.dispatchEvent(new Event(workspaceId));
+}
+
 export async function selectWorkspace(): Promise<WorkspaceSummary> {
   const path = await chooseDirectory();
   if (!path) throw new DOMException("已取消", "AbortError");
@@ -52,11 +56,13 @@ export function searchWorkspaceFiles(workspace: WorkspaceSummary, query: string,
   return desktopAction<WorkspaceEntry[]>("workspace.search", workspace.id, query, limit);
 }
 
-export async function exportWorkspaceDocument(workspace: WorkspaceSummary, filename: string, body: string) {
-  const path = await desktopAction<string>("workspace.export", workspace.id, filename, body);
-  changes.dispatchEvent(new Event(workspace.id));
-  return path;
+export function searchWorkspaceText(workspace: WorkspaceSummary, query: string, limit?: number, signal?: AbortSignal) {
+  signal?.throwIfAborted();
+  return desktopAction<WorkspaceTextMatch[]>("workspace.searchText", workspace.id, query, limit);
 }
+
+export const exportWorkspaceDocument = (workspace: WorkspaceSummary, filename: string, body: string) =>
+  desktopAction<string>("workspace.export", workspace.id, filename, body);
 
 export function workspaceErrorText(error: unknown): string {
   return error instanceof Error ? error.message : "无法访问工作区文件。";
