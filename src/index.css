@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: "LXGW Neo XiHei";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("@fontpkg/lxgw-neo-xi-hei/LXGWNeoXiHei.ttf") format("truetype");
+}
+
 @theme {
   --color-canvas: #efe6d5;
   --color-surface: #f6efe2;
@@ -35,7 +43,9 @@
   --syntax-operator: #4a3f32;
   --syntax-punctuation: #6e6150;
 
-  --font-family-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  --font-sans: "LXGW Neo XiHei", "Yu Gothic UI", "Microsoft YaHei UI", sans-serif;
+  --font-mono: "IBM Plex Mono", "LXGW Neo XiHei", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --font-family-sans: var(--font-sans);
 
   --font-size-large: 34px;
   --font-size-body: 17px;
@@ -72,21 +82,21 @@
   --color-scrollbar-active: rgba(212, 118, 78, 0.56);
   --color-scrim: rgba(14, 11, 8, 0.34);
 
-  --syntax-comment: #7ca866;
-  --syntax-keyword: #5ca4e0;
-  --syntax-control: #d08fcb;
-  --syntax-string: #d69980;
-  --syntax-number: #b5d4a8;
-  --syntax-function: #e2e0a8;
-  --syntax-type: #52cfb6;
+  --syntax-comment: #6a9955;
+  --syntax-keyword: #569cd6;
+  --syntax-control: #c586c0;
+  --syntax-string: #ce9178;
+  --syntax-number: #b5cea8;
+  --syntax-function: #dcdcaa;
+  --syntax-type: #4ec9b0;
   --syntax-variable: #9cdcfe;
   --syntax-constant: #4fc1ff;
   --syntax-property: #9cdcfe;
   --syntax-attr: #9cdcfe;
-  --syntax-tag: #5ca4e0;
+  --syntax-tag: #569cd6;
   --syntax-meta: #d7ba7d;
-  --syntax-operator: #d4c9b8;
-  --syntax-punctuation: #9e9382;
+  --syntax-operator: #d4d4d4;
+  --syntax-punctuation: #808080;
 }
 
 :root {
@@ -184,12 +194,17 @@ html, body, #root {
 }
 
 body {
-  font-family: var(--font-family-sans);
+  font-family: var(--font-sans);
   font-size: var(--font-size-body);
   line-height: var(--line-height-body);
   background-color: var(--color-canvas);
   color: var(--color-label);
   -webkit-font-smoothing: antialiased;
+  font-feature-settings: "kern" 1;
+}
+
+code, pre, kbd, samp {
+  font-family: var(--font-mono);
 }
 
 .hljs {

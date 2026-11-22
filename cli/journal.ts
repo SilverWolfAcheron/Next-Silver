@@ -2,8 +2,8 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, rmdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import type { ModelClient } from "../src/provider/client";
-import { ProviderError } from "../src/provider/client";
+import type { ChatInput, ModelClient } from "../src/agent-core/provider/client";
+import { ProviderError } from "../src/agent-core/provider/client";
 import { writePrivateJson } from "./host";
 
 export interface RequestJournal {
@@ -12,26 +12,26 @@ export interface RequestJournal {
 }
 
 export function createRequestJournal(dataDir: string): RequestJournal {
-  const folder = (operation: string) => join(dataDir, "requests",
+  const folder = (operation: string): string => join(dataDir, "requests",
     createHash("sha256").update(operation).digest("hex"));
 
   return {
-    model(operation, underlying, live = false) {
-      let sequence = 0;
+    model(operation: string, underlying: ModelClient, live: boolean | undefined = false): ModelClient {
+      let sequence: number = 0;
       return {
-        listModels: (signal) => underlying.listModels(signal),
-        async *streamChat(input) {
+        listModels: (signal: AbortSignal | undefined): Promise<string[]> => underlying.listModels(signal),
+        async *streamChat(input: ChatInput): AsyncIterable<string> {
           input.signal?.throwIfAborted();
-          const file = join(folder(operation), `${sequence++}.json`);
+          const file: string = join(folder(operation), `${sequence++}.json`);
           if (existsSync(file)) {
-            const completed = JSON.parse(readFileSync(file, "utf8")) as { text: string };
+            const completed: { text: string; } = JSON.parse(readFileSync(file, "utf8")) as { text: string };
             if (completed.text) yield completed.text;
             return;
           }
 
-          for (let attempt = 0; ; attempt++) {
+          for (let attempt: number = 0; ; attempt++) {
             input.signal?.throwIfAborted();
-            let text = "";
+            let text: string = "";
             try {
               for await (const chunk of underlying.streamChat(input)) {
                 text += chunk;
@@ -53,8 +53,8 @@ export function createRequestJournal(dataDir: string): RequestJournal {
         },
       };
     },
-    clear(operation) {
-      const directory = folder(operation);
+    clear(operation: string): void {
+      const directory: string = folder(operation);
       if (!existsSync(directory)) return;
       for (const entry of readdirSync(directory)) {
         if (/^\d+\.json$/u.test(entry)) unlinkSync(join(directory, entry));

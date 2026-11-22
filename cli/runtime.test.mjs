@@ -185,7 +185,7 @@ test("desktop CLI runs six rounds, reattaches, and resumes active seats without 
     await mkdir(alternateFolder);
     const alternate = await action("workspace.bind", alternateFolder);
     await action("bindWorkspace", threadId, alternate.id);
-    await assert.rejects(action("submitComposer", threadId, draft), /工作区已更换/u);
+    await assert.rejects(action("submitComposer", threadId, draft), /WORKSPACE_DRAFT_MISMATCH/u);
     const rebound = (await call("/state")).state.threads.find(({ id }) => id === threadId);
     assert.equal(rebound.draft, undefined);
     assert.equal(rebound.messages.length, 0);
