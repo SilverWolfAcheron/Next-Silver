@@ -12,6 +12,7 @@ import type { AddressInfo, Server as PipeServer, Socket } from "node:net";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { fileURLToPath } from "node:url";
 import { AppError, encodeErrorCode, ERROR_CODES, extractErrorCode } from "../src/agent-core/errors.ts";
 import { logError } from "../src/i18n/errors.ts";
 import type { ErrorCode, ParsedErrorCode } from "../src/types/errors.ts";
@@ -21,6 +22,10 @@ const ENDPOINT_FILE: string = "endpoint.json";
 const STATE_FILE: string = "sessions.json";
 const LOCK_FILE: string = "host.lock";
 const MAX_BODY_BYTES: number = 32 * 1024 * 1024;
+// The running host may come from an older build: endpoint.json is written when
+// the host starts, so a descriptor older than this script was spawned from an
+// outdated runtime and must be replaced instead of reused.
+const RUNTIME_ENTRY: string = fileURLToPath(import.meta.url);
 
 export interface Endpoint {
   port: number;
@@ -110,9 +115,7 @@ export function endpointUrl(endpoint: Endpoint): string {
   return `http://${LOOPBACK}:${endpoint.port}`;
 }
 
-export async function connectEndpoint(dataDir: string = appDataDir()): Promise<Endpoint | undefined> {
-  const endpoint: Endpoint | undefined = await readEndpoint(dataDir);
-  if (!endpoint) return;
+async function healthMatches(endpoint: Endpoint): Promise<boolean> {
   try {
     const response: Response = await fetch(`${endpointUrl(endpoint)}/health`, {
       headers: { Authorization: `Bearer ${endpoint.token}` },
@@ -120,10 +123,45 @@ export async function connectEndpoint(dataDir: string = appDataDir()): Promise<E
       redirect: "error",
     });
     const health: { pid?: number; } | undefined = response.ok ? await response.json() as { pid?: number } : undefined;
-    if (health?.pid === endpoint.pid) return endpoint;
+    return health?.pid === endpoint.pid;
   } catch {
-    // A closed or incomplete host descriptor can be replaced by the next owner.
+    return false;
   }
+}
+
+async function endpointIsCurrent(dataDir: string): Promise<boolean> {
+  const descriptor: Stats | undefined = await stat(join(dataDir, ENDPOINT_FILE)).catch((): undefined => undefined);
+  const runtime: Stats | undefined = await stat(RUNTIME_ENTRY).catch((): undefined => undefined);
+  if (!descriptor || !runtime) return true;
+  return descriptor.mtimeMs >= runtime.mtimeMs;
+}
+
+async function retireEndpoint(endpoint: Endpoint): Promise<void> {
+  try {
+    await fetch(`${endpointUrl(endpoint)}/shutdown`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${endpoint.token}` },
+      signal: AbortSignal.timeout(2000),
+      redirect: "error",
+    });
+  } catch {
+    // A host that already stopped needs no shutdown request.
+  }
+  const deadline: number = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    if (!(await healthMatches(endpoint))) return;
+    await delay(50);
+  }
+}
+
+export async function connectEndpoint(dataDir: string = appDataDir()): Promise<Endpoint | undefined> {
+  const endpoint: Endpoint | undefined = await readEndpoint(dataDir);
+  if (!endpoint || !(await healthMatches(endpoint))) return;
+  if (!(await endpointIsCurrent(dataDir))) {
+    await retireEndpoint(endpoint);
+    return;
+  }
+  return endpoint;
 }
 
 function processExists(processId: number): boolean {

@@ -15,6 +15,7 @@ import type { ParsedErrorCode } from "../src/types/errors";
 import type { Messages } from "../src/types/i18n";
 import { appDataDir, connectEndpoint, endpointUrl, loadState, saveStateSync, serve } from "./host";
 import type { Endpoint, RunningHost } from "./host";
+import { runtimeEnvironment } from "./proxy";
 import { createRuntime } from "./runtime";
 import type { DesktopRuntime } from "./runtime";
 import { bindWorkspace } from "./workspace";
@@ -33,7 +34,7 @@ async function findService(): Promise<Endpoint> {
   const existing: Endpoint | undefined = await connectEndpoint();
   if (existing) return existing;
   const child: ChildProcess = spawn(process.execPath, [fileURLToPath(import.meta.url), "serve"], {
-    detached: true, stdio: "ignore", windowsHide: true,
+    detached: true, stdio: "ignore", windowsHide: true, env: runtimeEnvironment(),
   });
   let failure: Error | undefined;
   child.once("error", (error: Error): void => { failure = error; });
