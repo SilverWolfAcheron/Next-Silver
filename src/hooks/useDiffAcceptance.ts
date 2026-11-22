@@ -1,11 +1,11 @@
 import { useMemo, useRef, useState } from "react";
 import type { Dispatch, RefObject, SetStateAction } from "react";
+import type { DiffFile, FileChange, FileDecision } from "../types/diff";
 import {
   diffNeedsConfirmation,
   diffPolicyError,
   parseDiff,
-} from "../agent-core/diff";
-import type { DiffFile, FileChange, FileDecision } from "../agent-core/diff";
+} from "../utils/diff";
 import type { Artifact, WorkspaceSummary, WritePolicy } from "../agent-core/types";
 import { DIFF_CONFIRM_FILE_THRESHOLD } from "../constants/inspector";
 import { workspaceErrorText } from "../services/workspaceClient";

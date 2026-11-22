@@ -147,6 +147,12 @@ export const enErrors: ErrorMessages = {
   WORKSPACE_NO_WRITABLE_THREAD: "No conversation in the current workspace permits writing documents.",
   WORKSPACE_GIT_UNAVAILABLE: "Git is not available on this machine to inspect repository changes.",
   WORKSPACE_GIT_DIFF_FAILED: "Failed to read Git diff. Check the repository status and try again.",
+  WORKSPACE_TARGET_EXISTS: "The target path already exists.",
+  WORKSPACE_DIR_NOT_FOUND: "Workspace directory does not exist.",
+  WORKSPACE_DIR_NOT_EMPTY: "Directory is not empty and cannot be deleted.",
+  FILE_EDIT_LINE_RANGE_INVALID: "The specified line range is invalid or out of bounds.",
+  FILE_EDIT_SAME_PATH: "Source and destination paths are identical.",
+  FILE_EDIT_RENAME_INTO_SELF: "Cannot move a directory into itself or a subdirectory.",
   BACKUP_INVALID_FORMAT: "File is not a valid Silver conversation backup.",
   BACKUP_UNREADABLE_THREAD: "Backup contains an unreadable conversation.",
 

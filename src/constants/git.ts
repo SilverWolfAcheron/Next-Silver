@@ -1,4 +1,4 @@
-import type { DiffLineKind } from "../agent-core/diff";
+import type { DiffLineKind } from "../types/diff";
 import type { GitFileStatus, GitStatusBadgeStyle } from "../types/git";
 
 export const GIT_DIFF_MAX_LINES_PER_FILE: number = 1500;

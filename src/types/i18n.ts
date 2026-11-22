@@ -146,6 +146,14 @@ export interface Messages {
     findButton: string;
     reloadFile: string;
     reloadButton: string;
+    editButton: string;
+    previewButton: string;
+    saveButton: string;
+    saveShortcut: string;
+    savingButton: string;
+    savedNotice: string;
+    discardButton: string;
+    unsavedLabel: string;
     attachToChatLabel: string;
     attachToChatButton: string;
     openChatLabel: string;

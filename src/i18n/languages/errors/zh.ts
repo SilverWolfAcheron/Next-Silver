@@ -147,6 +147,12 @@ export const zhErrors: ErrorMessages = {
   WORKSPACE_NO_WRITABLE_THREAD: "当前工作区没有可写文稿的对话。",
   WORKSPACE_GIT_UNAVAILABLE: "未检测到 Git 命令，无法读取仓库改动。",
   WORKSPACE_GIT_DIFF_FAILED: "读取 Git 改动失败，请检查仓库状态后重试。",
+  WORKSPACE_TARGET_EXISTS: "目标路径已存在。",
+  WORKSPACE_DIR_NOT_FOUND: "工作区文件夹不存在。",
+  WORKSPACE_DIR_NOT_EMPTY: "目标文件夹非空，无法删除。",
+  FILE_EDIT_LINE_RANGE_INVALID: "指定的行号范围无效或超出文件行数。",
+  FILE_EDIT_SAME_PATH: "源路径与目标路径相同，无需重命名。",
+  FILE_EDIT_RENAME_INTO_SELF: "不能将文件夹移动到其自身子目录中。",
   BACKUP_INVALID_FORMAT: "文件不是 Silver 对话备份。",
   BACKUP_UNREADABLE_THREAD: "备份中有无法读取的对话。",
 

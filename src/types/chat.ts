@@ -1,6 +1,6 @@
-import type { FileDecision } from "../agent-core/diff";
 import type { Artifact, ChatMessage, WorkspaceEntry, WorkspaceSummary, WritePolicy } from "../agent-core/types";
 import type { ModelMenuState } from "./composer";
+import type { FileDecision } from "./diff";
 import type { AgentTab } from "./layout";
 
 export interface AgentPaneProps {

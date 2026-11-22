@@ -5,8 +5,8 @@ import type { ErrorCode } from "../src/types/errors";
 import { SAMPLE_PCB_THREAD } from "../src/mocks/samples";
 import { importThreads } from "../src/agent-core/localData";
 import { getPreset } from "../src/agent-core/presets";
-import { applyDiff, decideDiffFile, diffNeedsConfirmation, diffPolicyError, isDiffPath, parseDiff } from "../src/agent-core/diff";
-import type { DiffFile, FileChange } from "../src/agent-core/diff";
+import { applyDiff, decideDiffFile, diffNeedsConfirmation, diffPolicyError, isDiffPath, parseDiff } from "../src/utils/diff";
+import type { DiffFile, FileChange } from "../src/types/diff";
 import { makeClient } from "../src/agent-core/provider/presets";
 import type { ProviderConfig } from "../src/agent-core/provider/presets";
 import type { Artifact, Brief, ChatDraft, Iteration, Run, Thread, WorkspaceSummary } from "../src/agent-core/types";
@@ -22,6 +22,18 @@ import {
 } from "./workspace";
 import { checkName, runCheck } from "./check";
 import { readWorkspaceGitDiff } from "./gitDiff";
+import {
+  appendWorkspaceFile,
+  createWorkspaceDirectory,
+  createWorkspaceFile,
+  deleteWorkspaceDirectory,
+  deleteWorkspaceFile,
+  deleteWorkspaceFileLines,
+  renameWorkspaceDirectory,
+  renameWorkspaceFile,
+  replaceWorkspaceFileContent,
+  replaceWorkspaceFileLines,
+} from "./workspaceFileOps";
 
 export interface DesktopRuntime {
   getState(): DesktopSnapshot;
@@ -320,6 +332,137 @@ export function createRuntime(
       case "workspace.search": return searchWorkspaceFiles(await workspace(id(a)), text(b), { limit: typeof c === "number" ? c : 24 });
       case "workspace.searchText": return searchWorkspaceText(await workspace(id(a)), text(b), { limit: typeof c === "number" ? c : 40 });
       case "workspace.gitDiff": return readWorkspaceGitDiff(await workspace(id(a)), dataDir);
+      case "workspace.deleteFile": {
+        const payload: Record<string, unknown> = record(b);
+        return deleteWorkspaceFile(
+          await workspace(id(a)),
+          {
+            path: text(payload.path),
+            ...(typeof payload.expectedBefore === "string"
+              ? { expectedBefore: payload.expectedBefore }
+              : {}),
+          },
+          dataDir
+        );
+      }
+      case "workspace.deleteDirectory": {
+        const payload: Record<string, unknown> = record(b);
+        return deleteWorkspaceDirectory(
+          await workspace(id(a)),
+          {
+            path: text(payload.path),
+            recursive: payload.recursive !== false,
+          },
+          dataDir
+        );
+      }
+      case "workspace.createFile": {
+        const payload: Record<string, unknown> = record(b);
+        return createWorkspaceFile(
+          await workspace(id(a)),
+          {
+            path: text(payload.path),
+            content: typeof payload.content === "string" ? payload.content : "",
+            overwrite: payload.overwrite === true,
+            createParents: payload.createParents !== false,
+          },
+          dataDir
+        );
+      }
+      case "workspace.createDirectory": {
+        const payload: Record<string, unknown> = record(b);
+        return createWorkspaceDirectory(
+          await workspace(id(a)),
+          {
+            path: text(payload.path),
+            recursive: payload.recursive !== false,
+          },
+          dataDir
+        );
+      }
+      case "workspace.renameFile": {
+        const payload: Record<string, unknown> = record(b);
+        return renameWorkspaceFile(
+          await workspace(id(a)),
+          {
+            fromPath: text(payload.fromPath),
+            toPath: text(payload.toPath),
+            overwrite: payload.overwrite === true,
+          },
+          dataDir
+        );
+      }
+      case "workspace.renameDirectory": {
+        const payload: Record<string, unknown> = record(b);
+        return renameWorkspaceDirectory(
+          await workspace(id(a)),
+          {
+            fromPath: text(payload.fromPath),
+            toPath: text(payload.toPath),
+            overwrite: payload.overwrite === true,
+          },
+          dataDir
+        );
+      }
+      case "workspace.replaceLines": {
+        const payload: Record<string, unknown> = record(b);
+        return replaceWorkspaceFileLines(
+          await workspace(id(a)),
+          {
+            path: text(payload.path),
+            startLine: typeof payload.startLine === "number" ? payload.startLine : -1,
+            endLine: typeof payload.endLine === "number" ? payload.endLine : -1,
+            replacement: text(payload.replacement),
+            ...(typeof payload.expectedBefore === "string"
+              ? { expectedBefore: payload.expectedBefore }
+              : {}),
+          },
+          dataDir
+        );
+      }
+      case "workspace.appendFile": {
+        const payload: Record<string, unknown> = record(b);
+        return appendWorkspaceFile(
+          await workspace(id(a)),
+          {
+            path: text(payload.path),
+            content: text(payload.content),
+            ensureNewline: payload.ensureNewline !== false,
+            createIfMissing: payload.createIfMissing === true,
+          },
+          dataDir
+        );
+      }
+      case "workspace.deleteLines": {
+        const payload: Record<string, unknown> = record(b);
+        return deleteWorkspaceFileLines(
+          await workspace(id(a)),
+          {
+            path: text(payload.path),
+            startLine: typeof payload.startLine === "number" ? payload.startLine : -1,
+            endLine: typeof payload.endLine === "number" ? payload.endLine : -1,
+            ...(typeof payload.expectedBefore === "string"
+              ? { expectedBefore: payload.expectedBefore }
+              : {}),
+          },
+          dataDir
+        );
+      }
+      case "workspace.replaceContent": {
+        const payload: Record<string, unknown> = record(b);
+        return replaceWorkspaceFileContent(
+          await workspace(id(a)),
+          {
+            path: text(payload.path),
+            content: text(payload.content),
+            ...(payload.expectedBefore === null || typeof payload.expectedBefore === "string"
+              ? { expectedBefore: payload.expectedBefore }
+              : {}),
+            createIfMissing: payload.createIfMissing === true,
+          },
+          dataDir
+        );
+      }
       case "workspace.export": {
         const binding: WorkspaceSummary = await workspace(id(a));
         if (!latest.current.threads.some((thread: Thread): boolean => thread.workspace?.id === binding.id && getPreset(thread.presetId).writePolicy !== "none")) {

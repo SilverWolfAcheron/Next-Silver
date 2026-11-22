@@ -1,4 +1,4 @@
-import type { JSX, UIEvent } from "react";
+import type { ChangeEvent, JSX, UIEvent } from "react";
 import { EDITOR_LINE_HEIGHT } from "../../constants/editor";
 import { useEditorController } from "../../hooks/useEditorController";
 import { useI18n } from "../../hooks/useI18n";
@@ -31,6 +31,11 @@ export function EditorPane({
     findOpen,
     query,
     matchIndex,
+    isEditing,
+    isDirty,
+    saving,
+    savedNotice,
+    saveError,
     source,
     highlighted,
     detectedLabel,
@@ -41,6 +46,7 @@ export function EditorPane({
     findInputRef,
     sectionRef,
     viewportRef,
+    textareaRef,
     activeMarkRef,
     openFolder,
     openFind,
@@ -50,8 +56,13 @@ export function EditorPane({
     openTab,
     closeTab,
     reloadCurrent,
+    toggleEdit,
+    updateDraft,
+    saveCurrent,
+    discardChanges,
     saveScrollPosition,
     handleKeyDown,
+    handleTextareaKeyDown,
   }: ReturnType<typeof useEditorController> = useEditorController(onAllTabsClosed);
 
   return (
@@ -64,6 +75,7 @@ export function EditorPane({
       <EditorTabBar
         paths={paths}
         activePath={activePath}
+        dirtyPath={isDirty ? path : undefined}
         onSelect={(entry: string): void => openTab(entry)}
         onClose={closeTab}
       />
@@ -76,11 +88,21 @@ export function EditorPane({
         workspaceName={workspace?.name}
         hasBody={body !== undefined}
         findOpen={findOpen}
+        isEditing={isEditing}
+        isDirty={isDirty}
+        saving={saving}
+        savedNotice={savedNotice}
+        saveError={saveError}
         detectedLabel={detectedLabel}
         onOpenSidebar={onOpenSidebar}
         onOpenAgent={onOpenAgent}
         onOpenFind={openFind}
         onReload={reloadCurrent}
+        onToggleEdit={toggleEdit}
+        onSave={(): void => {
+          void saveCurrent();
+        }}
+        onDiscard={discardChanges}
         onAttachFile={onAttachFile}
       />
 
@@ -114,15 +136,15 @@ export function EditorPane({
           ) : (
             <div
               ref={viewportRef}
-              tabIndex={0}
+              tabIndex={isEditing ? -1 : 0}
               aria-label={t.editor.fileContentLabel(path)}
               onScroll={(event: UIEvent<HTMLDivElement>): void =>
                 saveScrollPosition(event.currentTarget.scrollTop, event.currentTarget.scrollLeft)
               }
               className="min-h-0 min-w-0 flex-1 overflow-auto px-4 py-3 outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent"
             >
-              <pre className="relative flex min-w-full w-max font-mono text-[13px] leading-[20px] text-label">
-                {targetLine && (
+              <div className="relative flex min-w-full w-max font-mono text-[13px] leading-[20px] text-label">
+                {targetLine && !isEditing && (
                   <span
                     aria-hidden="true"
                     data-editor-line={targetLine}
@@ -130,19 +152,59 @@ export function EditorPane({
                     style={{ top: (targetLine - 1) * EDITOR_LINE_HEIGHT }}
                   />
                 )}
-                <span aria-hidden="true" className="relative select-none pr-4 text-right text-tertiary">
+                <pre
+                  aria-hidden="true"
+                  className="relative m-0 shrink-0 select-none pr-4 text-right font-mono text-[13px] leading-[20px] text-tertiary"
+                >
                   {gutter}
-                </span>
-                <CodeView
-                  source={source}
-                  root={highlighted?.root}
-                  language={highlighted?.language}
-                  offsets={offsets}
-                  activeOffset={selection}
-                  queryLength={findOpen ? query.length : 0}
-                  activeMarkRef={activeMarkRef}
-                />
-              </pre>
+                </pre>
+
+                {isEditing ? (
+                  <div className="grid min-w-0 flex-1 grid-cols-1 grid-rows-1">
+                    <pre
+                      aria-hidden="true"
+                      className="pointer-events-none col-start-1 row-start-1 m-0 min-h-full font-mono text-[13px] leading-[20px] whitespace-pre"
+                    >
+                      <CodeView
+                        source={source}
+                        root={highlighted?.root}
+                        language={highlighted?.language}
+                        offsets={offsets}
+                        activeOffset={selection}
+                        queryLength={findOpen ? query.length : 0}
+                        activeMarkRef={activeMarkRef}
+                      />
+                      {source.endsWith("\n") ? " " : ""}
+                    </pre>
+                    <textarea
+                      ref={textareaRef}
+                      aria-label={t.editor.fileContentLabel(path)}
+                      value={source}
+                      spellCheck={false}
+                      autoCapitalize="off"
+                      autoCorrect="off"
+                      wrap="off"
+                      onChange={(event: ChangeEvent<HTMLTextAreaElement>): void =>
+                        updateDraft(event.target.value)
+                      }
+                      onKeyDown={handleTextareaKeyDown}
+                      className="col-start-1 row-start-1 m-0 min-h-full w-full resize-none overflow-hidden border-0 bg-transparent p-0 font-mono text-[13px] leading-[20px] whitespace-pre text-transparent caret-accent outline-none selection:bg-accent/25"
+                    />
+                  </div>
+                ) : (
+                  <pre className="m-0 font-mono text-[13px] leading-[20px]">
+                    <CodeView
+                      source={source}
+                      root={highlighted?.root}
+                      language={highlighted?.language}
+                      offsets={offsets}
+                      activeOffset={selection}
+                      queryLength={findOpen ? query.length : 0}
+                      activeMarkRef={activeMarkRef}
+                    />
+                  </pre>
+                )}
+              </div>
             </div>
           )}
         </div>

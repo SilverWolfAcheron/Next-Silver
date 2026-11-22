@@ -7,6 +7,7 @@ import { CloseIcon } from "../common/Icons";
 export function EditorTabBar({
   paths,
   activePath,
+  dirtyPath,
   onSelect,
   onClose,
 }: EditorTabBarProps): JSX.Element | null {
@@ -47,9 +48,16 @@ export function EditorTabBar({
               aria-label={entry}
               title={entry}
               onClick={(): void => onSelect(entry)}
-              className="h-full min-w-0 truncate pl-3 pr-1.5 text-left font-mono text-[12px] text-inherit outline-none focus-visible:underline"
+              className="flex h-full min-w-0 items-center gap-1.5 truncate pl-3 pr-1.5 text-left font-mono text-[12px] text-inherit outline-none focus-visible:underline"
             >
-              {resolveFileTabLabel(paths, entry)}
+              <span className="truncate">{resolveFileTabLabel(paths, entry)}</span>
+              {dirtyPath === entry && (
+                <span
+                  aria-label={t.editor.unsavedLabel}
+                  title={t.editor.unsavedLabel}
+                  className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent"
+                />
+              )}
             </button>
             <button
               type="button"

@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && tsc -p tsconfig.cli.json && vite build",
-    "test": "node --test --experimental-strip-types src/agent-core/seats.test.ts src/agent-core/iterate.test.ts src/i18n/errors.test.ts cli/infrastructure.test.ts cli/gitDiff.test.ts",
+    "test": "node --test --experimental-strip-types src/agent-core/seats.test.ts src/agent-core/iterate.test.ts src/i18n/errors.test.ts cli/infrastructure.test.ts cli/gitDiff.test.ts cli/fileEdit.test.ts",
     "preview": "vite preview",
     "desktop:dev": "tauri dev",
     "desktop:build": "tauri build",

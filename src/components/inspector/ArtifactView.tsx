@@ -1,6 +1,6 @@
 import { Fragment, useLayoutEffect, useRef } from "react";
 import type { JSX, RefObject } from "react";
-import type { FileDecision } from "../../agent-core/diff";
+import type { FileDecision } from "../../types/diff";
 import type { Artifact, Run } from "../../agent-core/types";
 import { useI18n } from "../../hooks/useI18n";
 import type { ArtifactViewProps } from "../../types/inspector";

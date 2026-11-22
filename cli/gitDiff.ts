@@ -3,7 +3,7 @@ import type { ExecException } from "node:child_process";
 import { lstat, readFile } from "node:fs/promises";
 import type { Stats } from "node:fs";
 import { join } from "node:path";
-import { isDiffPath } from "../src/agent-core/diff.ts";
+import { isDiffPath } from "../src/utils/diff.ts";
 import { AppError, ERROR_CODES } from "../src/agent-core/errors.ts";
 import type { WorkspaceSummary } from "../src/agent-core/types.ts";
 import {

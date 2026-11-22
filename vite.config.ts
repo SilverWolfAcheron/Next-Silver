@@ -21,7 +21,7 @@ export default defineConfig({
   server: {
     port: 5173,
     watch: {
-      ignored: ["**/src-tauri/**"],
+      ignored: ["**/src-tauri/**", "**/.silver-*.tmp"],
     },
   },
 });

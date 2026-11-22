@@ -1,4 +1,3 @@
-import type { FileChange, FileDecision } from "../agent-core/diff";
 import type { DomainPack } from "../agent-core/domains/pcb";
 import type {
   AgentSeat,
@@ -10,6 +9,7 @@ import type {
   WorkspaceSummary,
   WritePolicy,
 } from "../agent-core/types";
+import type { FileChange, FileDecision } from "./diff";
 
 export interface ParallelRunEntry {
   key: string;

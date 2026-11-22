@@ -30,16 +30,35 @@ export function createEditorStore(
           previewRequest?.abort();
           const controller: AbortController = new AbortController();
           previewRequest = controller;
+          const existing: FilePreview | null = get().filePreview;
+          const sameFile: boolean =
+            existing?.threadId === request.threadId &&
+            existing.workspaceId === request.workspace.id &&
+            existing.path === request.path;
           const preview: FilePreview = {
             threadId: request.threadId,
             workspaceId: request.workspace.id,
             path: request.path,
             line: request.line,
+            ...(sameFile && existing?.body !== undefined ? { body: existing.body } : {}),
           };
-          set({ filePreview: preview });
+          if (!sameFile || existing?.line !== request.line || existing?.error !== undefined) {
+            set({ filePreview: preview });
+          }
           try {
             const body: string = await deps.readWorkspaceFile(request.workspace, request.path);
             if (!controller.signal.aborted) {
+              const current: FilePreview | null = get().filePreview;
+              if (
+                current?.threadId === request.threadId &&
+                current.workspaceId === request.workspace.id &&
+                current.path === request.path &&
+                current.body === body &&
+                current.line === request.line &&
+                current.error === undefined
+              ) {
+                return;
+              }
               set({ filePreview: { ...preview, body } });
             }
           } catch (failure: unknown) {
@@ -50,6 +69,19 @@ export function createEditorStore(
         },
 
         closeFilePreview,
+
+        updatePreviewBody: (path: string, body: string): void => {
+          set((current: EditorStore): EditorStore | Partial<EditorStore> => {
+            if (current.filePreview?.path !== path) return current;
+            return {
+              filePreview: {
+                ...current.filePreview,
+                body,
+                error: undefined,
+              },
+            };
+          });
+        },
 
         ensureEditorTab: (scope: string, path: string): void => {
           if (!scope || !path) return;

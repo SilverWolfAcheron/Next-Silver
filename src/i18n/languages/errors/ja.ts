@@ -147,6 +147,12 @@ export const jaErrors: ErrorMessages = {
   WORKSPACE_NO_WRITABLE_THREAD: "現在のワークスペースにドキュメントを書き込める会話がありません。",
   WORKSPACE_GIT_UNAVAILABLE: "Git コマンドが見つからないため差分を取得できません。",
   WORKSPACE_GIT_DIFF_FAILED: "Git 差分の取得に失敗しました。リポジトリ状態を確認して再試行してください。",
+  WORKSPACE_TARGET_EXISTS: "指定したパスはすでに存在します。",
+  WORKSPACE_DIR_NOT_FOUND: "ワークスペースフォルダーが存在しません。",
+  WORKSPACE_DIR_NOT_EMPTY: "フォルダーが空ではないため削除できません。",
+  FILE_EDIT_LINE_RANGE_INVALID: "指定された行範囲が無効かファイルの行数を超えています。",
+  FILE_EDIT_SAME_PATH: "変更前と変更後のパスが同じです。",
+  FILE_EDIT_RENAME_INTO_SELF: "フォルダーを自身のサブディレクトリーへ移動できません。",
   BACKUP_INVALID_FORMAT: "Silver の会話バックアップファイルではありません。",
   BACKUP_UNREADABLE_THREAD: "バックアップ内に読み込めない会話があります。",
 

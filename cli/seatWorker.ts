@@ -1,6 +1,6 @@
 import type { ModelClient } from "../src/agent-core/provider/client";
-import { applyDiff, parseDiff } from "../src/agent-core/diff";
-import type { DiffFile } from "../src/agent-core/diff";
+import { applyDiff, parseDiff } from "../src/utils/diff";
+import type { DiffFile } from "../src/types/diff";
 import { AppError, ERROR_CODES, extractErrorCode } from "../src/agent-core/errors";
 import { getPreset } from "../src/agent-core/presets";
 import { isValidAudit } from "../src/agent-core/seats";

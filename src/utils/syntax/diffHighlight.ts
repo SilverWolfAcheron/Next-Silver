@@ -1,5 +1,5 @@
 import type { Element, ElementContent } from "hast";
-import type { DiffLineKind } from "../../agent-core/diff";
+import type { DiffLineKind } from "../../types/diff";
 import type { HighlightedDocument } from "../../types/editor";
 
 export interface DiffHighlightInputLine {

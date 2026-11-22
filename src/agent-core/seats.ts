@@ -1,4 +1,4 @@
-import { isDiffPath } from "./diff.ts";
+import { isDiffPath } from "../utils/diff.ts";
 import { AppError, ERROR_CODES } from "./errors.ts";
 import type { AgentSeat, Run } from "./types";
 

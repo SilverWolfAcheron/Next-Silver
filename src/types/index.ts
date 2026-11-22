@@ -37,6 +37,16 @@ export type {
   ModelOption,
 } from "./composer";
 export type {
+  DecideDiffFileOptions,
+  DiffFile,
+  DiffHunk,
+  DiffLineKind,
+  DiffRange,
+  DiffRow,
+  FileChange,
+  FileDecision,
+} from "./diff";
+export type {
   CodeViewProps,
   EditorFindBarProps,
   EditorPaneProps,
@@ -58,6 +68,27 @@ export type {
   ErrorParams,
   ParsedErrorCode,
 } from "./errors";
+export type {
+  AppendFileParams,
+  CreateDirectoryParams,
+  CreateFileParams,
+  DeleteDirectoryParams,
+  DeleteFileLinesParams,
+  DeleteFileParams,
+  FileEditResult,
+  FilePathResult,
+  LineEnding,
+  RenamePathParams,
+  RenamePathResult,
+  ReplaceFileContentParams,
+  ReplaceFileLinesParams,
+  TextAppendParams,
+  TextAppendResult,
+  TextLineDeleteParams,
+  TextLineDeleteResult,
+  TextLineReplaceParams,
+  TextLineReplaceResult,
+} from "./fileEdit";
 export type {
   GitDiffFile,
   GitDiffFileCardProps,

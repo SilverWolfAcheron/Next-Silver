@@ -1,5 +1,5 @@
-import { mergeDiffArtifacts, parseDiff } from "../src/agent-core/diff";
-import type { DiffFile } from "../src/agent-core/diff";
+import { mergeDiffArtifacts, parseDiff } from "../src/utils/diff";
+import type { DiffFile } from "../src/types/diff";
 import { SessionError } from "../src/agent-core/session";
 import { runSeat } from "./seatWorker";
 import type { SeatResult } from "./seatWorker";

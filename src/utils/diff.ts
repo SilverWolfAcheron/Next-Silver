@@ -1,44 +1,32 @@
-import { AppError, ERROR_CODES, serializeErrorCode } from "./errors.ts";
+import { AppError, ERROR_CODES, serializeErrorCode } from "../agent-core/errors.ts";
+import type { Artifact, WritePolicy } from "../agent-core/types";
+import type {
+  DecideDiffFileOptions,
+  DiffFile,
+  DiffHunk,
+  DiffLineKind,
+  DiffRange,
+  DiffRow,
+  FileChange,
+  FileDecision,
+} from "../types/diff";
 import type { ErrorCode } from "../types/errors";
-import type { Artifact, WritePolicy } from "./types";
+import type { GitDiffFile, GitTreeNode } from "../types/git";
 
-export type FileDecision = "accepted" | "rejected";
-export type DiffLineKind = "added" | "removed" | "context" | "meta";
-
-interface DiffRow {
-  marker: " " | "+" | "-";
-  text: string;
-  noNewline?: boolean;
-}
-
-interface Range {
-  start: number;
-  count: number;
-}
-
-interface Hunk {
-  before: Range;
-  after: Range;
-  rows: DiffRow[];
-}
-
-export interface FileChange {
-  path: string;
-  operation: "create" | "update" | "delete";
-  hunks: Hunk[];
-}
-
-export interface DiffFile {
-  path?: string;
-  change?: FileChange;
-  error?: string;
-  lines: { text: string; kind: DiffLineKind }[];
-  additions: number;
-  deletions: number;
-}
+export type {
+  DecideDiffFileOptions,
+  DiffFile,
+  DiffLineKind,
+  FileChange,
+  FileDecision,
+};
 
 const NO_NEWLINE: string = "\\ No newline at end of file";
-const lineKinds: { readonly " ": "context"; readonly "+": "added"; readonly "-": "removed"; } = { " ": "context", "+": "added", "-": "removed" } as const;
+const lineKinds: { readonly " ": "context"; readonly "+": "added"; readonly "-": "removed" } = {
+  " ": "context",
+  "+": "added",
+  "-": "removed",
+} as const;
 
 export function isDiffPath(path: string): boolean {
   return path.split("/").every((part: string): boolean | "" => (
@@ -53,12 +41,12 @@ function pathKey(path: string): string {
   return path.normalize("NFC").toLowerCase();
 }
 
-function hunkHeader(line: string): Omit<Hunk, "rows"> | undefined {
+function hunkHeader(line: string): Omit<DiffHunk, "rows"> | undefined {
   const match: RegExpExecArray | null = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(?:\s.*)?$/u.exec(line);
   if (!match) return;
   const [, oldStart, oldCount = "1", newStart, newCount = "1"]: RegExpExecArray = match;
-  const before: { start: number; count: number; } = { start: Number(oldStart), count: Number(oldCount) };
-  const after: { start: number; count: number; } = { start: Number(newStart), count: Number(newCount) };
+  const before: DiffRange = { start: Number(oldStart), count: Number(oldCount) };
+  const after: DiffRange = { start: Number(newStart), count: Number(newCount) };
   if (
     ![before.start, before.count, after.start, after.count].every(Number.isSafeInteger) ||
     (before.count && !before.start) || (after.count && !after.start) ||
@@ -93,7 +81,7 @@ function splitDiff(body: string): string[][] {
       if (line.startsWith(" ") || line.startsWith("-")) before--;
       if (line.startsWith(" ") || line.startsWith("+")) after--;
     } else {
-      const range: Omit<Hunk, "rows"> | undefined = hunkHeader(line);
+      const range: Omit<DiffHunk, "rows"> | undefined = hunkHeader(line);
       if (range) {
         before = range.before.count;
         after = range.after.count;
@@ -141,7 +129,7 @@ function gitPathsMatch(header: string, path: string): boolean {
 
 function readFile(lines: string[]): DiffFile {
   const file: DiffFile = {
-    lines: lines.map((text: string): { text: string; kind: "meta"; } => ({ text, kind: "meta" })),
+    lines: lines.map((text: string): { text: string; kind: "meta" } => ({ text, kind: "meta" })),
     additions: 0,
     deletions: 0,
   };
@@ -176,10 +164,10 @@ function readFile(lines: string[]): DiffFile {
     }
     if (git && !gitPathsMatch(lines[0], path)) throw new AppError(ERROR_CODES.DIFF_GIT_PATH_MISMATCH);
 
-    const hunks: Hunk[] = [];
+    const hunks: DiffHunk[] = [];
     let index: number = header + 2;
     while (index < lines.length) {
-      const range: Omit<Hunk, "rows"> | undefined = hunkHeader(lines[index++]);
+      const range: Omit<DiffHunk, "rows"> | undefined = hunkHeader(lines[index++]);
       if (!range) throw new AppError(ERROR_CODES.DIFF_HUNK_RANGE_INVALID);
       const rows: DiffRow[] = [];
       let oldCount: number = 0;
@@ -247,14 +235,16 @@ interface TextLine {
 
 function textLines(text: string): TextLine[] {
   const pieces: string[] = text.split("\n");
-  return pieces.flatMap<TextLine>((part: string, index: number): { text: string; ending: ""; }[] | { text: string; ending: "\r\n"; }[] | { text: string; ending: "\n"; }[] => {
-    if (index === pieces.length - 1) return part ? [{ text: part, ending: "" }] : [];
-    if (part.endsWith("\r")) return [{ text: part.slice(0, -1), ending: "\r\n" }];
-    return [{ text: part, ending: "\n" }];
-  });
+  return pieces.flatMap<TextLine>(
+    (part: string, index: number): { text: string; ending: "" }[] | { text: string; ending: "\r\n" }[] | { text: string; ending: "\n" }[] => {
+      if (index === pieces.length - 1) return part ? [{ text: part, ending: "" }] : [];
+      if (part.endsWith("\r")) return [{ text: part.slice(0, -1), ending: "\r\n" }];
+      return [{ text: part, ending: "\n" }];
+    }
+  );
 }
 
-function rangeOffset({ start, count }: Range): number {
+function rangeOffset({ start, count }: DiffRange): number {
   return count ? start - 1 : start;
 }
 
@@ -313,13 +303,16 @@ export function diffNeedsConfirmation(change: FileChange): boolean {
 }
 
 function fileText(file: DiffFile): string {
-  return file.lines.map(({ text }: { text: string; kind: DiffLineKind; }): string => text).join("\n");
+  return file.lines.map(({ text }: { text: string; kind: DiffLineKind }): string => text).join("\n");
 }
 
 function withFiles(artifact: Artifact, files: DiffFile[]): Artifact {
   const retainedPaths: Set<string | undefined> = new Set(files.map(({ path }: DiffFile): string | undefined => path));
-  const fileDecisions: Record<string, "accepted" | "rejected"> = Object.fromEntries(Object.entries(artifact.fileDecisions ?? {})
-    .filter(([path]: [string, "accepted" | "rejected"]): boolean => retainedPaths.has(path)));
+  const fileDecisions: Record<string, FileDecision> = Object.fromEntries(
+    Object.entries(artifact.fileDecisions ?? {}).filter(
+      ([path]: [string, FileDecision]): boolean => retainedPaths.has(path)
+    )
+  );
   return { ...artifact, body: files.map(fileText).join("\n"), fileDecisions };
 }
 
@@ -330,7 +323,9 @@ export function mergeDiffArtifacts(existing: Artifact[], additions: Artifact[]):
       merged = [...merged, addition];
       continue;
     }
-    const incoming: Set<string> = new Set(parseDiff(addition.body).flatMap(({ change }: DiffFile): string[] => change ? [pathKey(change.path)] : []));
+    const incoming: Set<string> = new Set(
+      parseDiff(addition.body).flatMap(({ change }: DiffFile): string[] => change ? [pathKey(change.path)] : [])
+    );
     let previousAccepted: boolean = false;
     merged = merged.flatMap((artifact: Artifact): Artifact[] => {
       if (artifact.kind !== "diff" || artifact.workspaceId !== addition.workspaceId) return [artifact];
@@ -344,24 +339,20 @@ export function mergeDiffArtifacts(existing: Artifact[], additions: Artifact[]):
       if (files.length === retained.length) return [artifact];
       return retained.length ? [withFiles(artifact, retained)] : [];
     });
-    merged.push(previousAccepted
-      ? { ...addition, title: `${addition.title} · ${new Date().toLocaleString("zh-CN")}` }
-      : addition);
+    merged.push(
+      previousAccepted
+        ? { ...addition, title: `${addition.title} · ${new Date().toLocaleString("zh-CN")}` }
+        : addition
+    );
   }
   return merged;
 }
 
-export interface DecideDiffFileOptions {
-  snapshot: Artifact;
-  path: string;
-  decision: FileDecision;
-}
-
 export function decideDiffFile(
   artifacts: Artifact[],
-  options: DecideDiffFileOptions
+  options: DecideDiffFileOptions<Artifact>
 ): Artifact[] {
-  const { snapshot, path, decision }: DecideDiffFileOptions = options;
+  const { snapshot, path, decision }: DecideDiffFileOptions<Artifact> = options;
   const proposed: DiffFile | undefined = parseDiff(snapshot.body).find(
     ({ change }: DiffFile): boolean => change?.path === path
   );
@@ -392,4 +383,87 @@ export function decideDiffFile(
       fileDecisions: { [path]: decision },
     },
   ];
+}
+
+interface MutableDirectory {
+  name: string;
+  path: string;
+  directories: Map<string, MutableDirectory>;
+  files: GitTreeNode[];
+  additions: number;
+  deletions: number;
+}
+
+function finalizeDirectory(directory: MutableDirectory): GitTreeNode[] {
+  const dirNodes: GitTreeNode[] = Array.from(directory.directories.values())
+    .sort((left: MutableDirectory, right: MutableDirectory): number =>
+      left.name.localeCompare(right.name, undefined, { numeric: true, sensitivity: "base" })
+    )
+    .map((child: MutableDirectory): GitTreeNode => ({
+      name: child.name,
+      path: child.path,
+      kind: "directory",
+      children: finalizeDirectory(child),
+      additions: child.additions,
+      deletions: child.deletions,
+    }));
+
+  const fileNodes: GitTreeNode[] = [...directory.files].sort(
+    (left: GitTreeNode, right: GitTreeNode): number =>
+      left.name.localeCompare(right.name, undefined, { numeric: true, sensitivity: "base" })
+  );
+
+  return [...dirNodes, ...fileNodes];
+}
+
+export function buildGitChangesTree(files: GitDiffFile[]): GitTreeNode[] {
+  const root: MutableDirectory = {
+    name: "",
+    path: "",
+    directories: new Map(),
+    files: [],
+    additions: 0,
+    deletions: 0,
+  };
+
+  for (const file of files) {
+    const parts: string[] = file.path.split("/").filter(Boolean);
+    if (parts.length === 0) continue;
+
+    let current: MutableDirectory = root;
+    current.additions += file.additions;
+    current.deletions += file.deletions;
+
+    for (let index: number = 0; index < parts.length - 1; index += 1) {
+      const segment: string = parts[index];
+      const nextPath: string = current.path ? `${current.path}/${segment}` : segment;
+      let child: MutableDirectory | undefined = current.directories.get(segment);
+      if (!child) {
+        child = {
+          name: segment,
+          path: nextPath,
+          directories: new Map(),
+          files: [],
+          additions: 0,
+          deletions: 0,
+        };
+        current.directories.set(segment, child);
+      }
+      child.additions += file.additions;
+      child.deletions += file.deletions;
+      current = child;
+    }
+
+    const fileName: string = parts[parts.length - 1];
+    current.files.push({
+      name: fileName,
+      path: file.path,
+      kind: "file",
+      file,
+      additions: file.additions,
+      deletions: file.deletions,
+    });
+  }
+
+  return finalizeDirectory(root);
 }
