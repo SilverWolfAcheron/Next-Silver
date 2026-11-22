@@ -111,11 +111,11 @@ export function WorkbenchShell(): JSX.Element {
 
   const threadId: string | undefined = currentThread?.id;
   const workspace: WorkspaceSummary | undefined = currentThread?.workspace;
-  const changesMode: boolean = centerMode === "agent" && agentTab === "artifact";
+  const gitDiffActive: boolean = (centerMode === "agent" && agentTab === "artifact") || filesOpen;
   const {
     selectedPath: selectedDiffPath,
     selectPath: selectDiffPath,
-  }: ReturnType<typeof useWorkspaceGitDiff> = useWorkspaceGitDiff(workspace, changesMode);
+  }: ReturnType<typeof useWorkspaceGitDiff> = useWorkspaceGitDiff(workspace, gitDiffActive);
   const scope: string = makeEditorScope(threadId, workspace?.id);
   const activePreview: FilePreview | null =
     filePreview?.threadId === threadId && workspace?.id === filePreview?.workspaceId
@@ -165,7 +165,7 @@ export function WorkbenchShell(): JSX.Element {
       : "hidden h-full shrink-0 min-[960px]:flex min-[960px]:w-[var(--sidebar-w)]";
 
   const rightFilesClass: string = filesOpen
-    ? "absolute inset-y-1.5 right-1.5 z-40 flex w-[280px] max-w-[85vw] overflow-hidden rounded-[14px] border border-separator bg-canvas shadow-lg min-[960px]:static min-[960px]:z-auto min-[960px]:h-full min-[960px]:shrink-0 min-[960px]:rounded-none min-[960px]:border-0 min-[960px]:w-[var(--files-w)] min-[960px]:shadow-none"
+    ? "absolute inset-y-1.5 right-1.5 z-40 flex min-h-0 w-[280px] max-w-[85vw] flex-col overflow-hidden rounded-[14px] border border-separator bg-canvas shadow-lg min-[960px]:static min-[960px]:z-auto min-[960px]:h-full min-[960px]:shrink-0 min-[960px]:rounded-none min-[960px]:border-0 min-[960px]:w-[var(--files-w)] min-[960px]:shadow-none"
     : "hidden";
 
   const layoutVars: CSSProperties = {
@@ -261,14 +261,16 @@ export function WorkbenchShell(): JSX.Element {
         {filesOpen && (
           <WorkspaceExplorer
             workspace={workspace}
-            changesMode={changesMode}
-            selectedPath={changesMode ? (selectedDiffPath ?? undefined) : activePreview?.path}
+            selectedPath={activePreview?.path}
+            selectedDiffPath={selectedDiffPath ?? undefined}
             onBind={(nextWorkspace: WorkspaceSummary): void => {
               if (currentThread && filePreview?.threadId === currentThread.id) closeFilePreview();
               void attachWorkspace(nextWorkspace);
             }}
             onPreview={(path: string): void => openFileInCenter(path)}
+            onOpenChanges={(): void => selectAgentTab("artifact")}
             onSelectChangedFile={(path: string): void => {
+              selectAgentTab("artifact");
               selectDiffPath(path);
               if (isNarrow()) setFilesOpen(false);
             }}

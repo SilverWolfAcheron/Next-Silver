@@ -336,11 +336,14 @@ export const jaMessages: Messages = {
   },
 
   gitDiff: {
+    sectionTitle: "変更",
     noWorkspace: "Git の変更を表示するにはワークスペースフォルダーを開いてください。",
     notGitRepo: "現在のワークスペースは Git リポジトリではありません。",
     cleanWorkingTree: "未コミットの変更はありません。",
     loading: "Git の変更を読み込み中…",
     refresh: "更新",
+    refreshChanges: "変更を更新",
+    collapseChanges: "変更ツリーを折りたたむ",
     expandAll: "すべて展開",
     collapseAll: "すべて折りたたむ",
     openFile: "ファイルを開く",
