@@ -118,7 +118,7 @@ export function ProviderPanel() {
     <dialog
       ref={dialog}
       aria-labelledby={titleId}
-      className="fixed inset-0 m-auto max-h-[82vh] w-[min(32rem,calc(100%-2rem))] overflow-hidden rounded-[14px] border border-separator bg-group p-0 text-label shadow-[0_18px_48px_rgba(44,36,27,0.22)] backdrop:bg-label/30 backdrop:backdrop-blur-[2px] dark:shadow-[0_22px_56px_rgba(0,0,0,0.55)]"
+      className="fixed inset-0 m-auto max-h-[82vh] w-[min(32rem,calc(100%-2rem))] overflow-hidden rounded-[14px] border border-separator bg-group p-0 text-label shadow-[0_18px_48px_rgba(44,36,27,0.22)] dark:shadow-[0_22px_56px_rgba(0,0,0,0.48)]"
       onCancel={(event) => {
         event.preventDefault();
         closeModal();

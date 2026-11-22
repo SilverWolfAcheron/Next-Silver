@@ -17,6 +17,7 @@
   --color-scrollbar: rgba(94, 74, 48, 0.24);
   --color-scrollbar-hover: rgba(94, 74, 48, 0.44);
   --color-scrollbar-active: rgba(184, 86, 53, 0.58);
+  --color-scrim: rgba(44, 36, 27, 0.22);
 
   --syntax-comment: #2d7a36;
   --syntax-keyword: #0b42cc;
@@ -69,6 +70,7 @@
   --color-scrollbar: rgba(243, 234, 216, 0.20);
   --color-scrollbar-hover: rgba(243, 234, 216, 0.36);
   --color-scrollbar-active: rgba(212, 118, 78, 0.56);
+  --color-scrim: rgba(14, 11, 8, 0.34);
 
   --syntax-comment: #7ca866;
   --syntax-keyword: #5ca4e0;
@@ -164,6 +166,15 @@ select,
 select option {
   background-color: var(--color-group);
   color: var(--color-label);
+}
+
+dialog::backdrop {
+  background-color: rgba(44, 36, 27, 0.22);
+  backdrop-filter: blur(1.5px);
+}
+
+.dark dialog::backdrop {
+  background-color: rgba(14, 11, 8, 0.34);
 }
 
 html, body, #root {

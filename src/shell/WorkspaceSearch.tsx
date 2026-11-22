@@ -107,7 +107,7 @@ export function WorkspaceSearch({ mode, workspace, onMode, onClose, onOpenFolder
 
   return (
     <dialog ref={dialog} aria-labelledby={titleId}
-      className="fixed inset-x-0 top-[14vh] mx-auto my-0 w-[min(42rem,calc(100%-1.5rem))] max-h-[74vh] overflow-hidden rounded-[12px] border border-separator bg-group text-label backdrop:bg-label/25"
+      className="fixed inset-x-0 top-[14vh] mx-auto my-0 w-[min(42rem,calc(100%-1.5rem))] max-h-[74vh] overflow-hidden rounded-[12px] border border-separator bg-group text-label shadow-[0_18px_48px_rgba(44,36,27,0.20)] dark:shadow-[0_22px_56px_rgba(0,0,0,0.48)]"
       onCancel={(event) => { event.preventDefault(); onClose(); }}
       onKeyDown={(event) => {
         if (event.key === "Escape") {
