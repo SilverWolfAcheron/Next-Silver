@@ -1,32 +1,48 @@
 import { useState } from "react";
 import type { Dispatch, JSX, SetStateAction } from "react";
-import type { FileDecision } from "../../agent-core/diff";
 import { getDomain } from "../../agent-core/domains/pcb";
 import type { DomainPack } from "../../agent-core/domains/pcb";
 import { getPreset } from "../../agent-core/presets";
 import type { Preset } from "../../agent-core/presets";
 import { requirementSequence } from "../../agent-core/session";
-import type { Artifact, Brief, ChatMessage, InspectorTab, Thread } from "../../agent-core/types";
+import type { Artifact, Brief, InspectorTab, Thread } from "../../agent-core/types";
 import { INSPECTOR_TAB_IDS } from "../../constants/layout";
 import { useI18n } from "../../hooks/useI18n";
 import { useRuntimeStore } from "../../stores/runtimeStore";
 import type { InspectorPaneProps, ThreadInspectorProps } from "../../types/inspector";
 import type { UIAction } from "../../types/runtime";
-import type { AcceptFileParams, FileDecisionParams, RuntimeStore } from "../../types/stores";
-import { ArtifactView } from "./ArtifactView";
+import type { RuntimeStore } from "../../types/stores";
 import { BriefView } from "./BriefView";
+import { GitDiffView } from "./GitDiffView";
 import { ProgressView } from "./ProgressView";
 
-export function InspectorPane({ embedded = false }: InspectorPaneProps): JSX.Element | null {
+export function InspectorPane({
+  embedded = false,
+  onOpenFile,
+  onViewArtifactInChat,
+}: InspectorPaneProps): JSX.Element | null {
   const currentThread: Thread | null = useRuntimeStore(
     (s: RuntimeStore): Thread | null => s.currentThread
   );
   if (!currentThread) return null;
   if (!embedded && !currentThread.inspectorOpen) return null;
-  return <ThreadInspector key={currentThread.id} thread={currentThread} embedded={embedded} />;
+  return (
+    <ThreadInspector
+      key={currentThread.id}
+      thread={currentThread}
+      embedded={embedded}
+      onOpenFile={onOpenFile}
+      onViewArtifactInChat={onViewArtifactInChat}
+    />
+  );
 }
 
-function ThreadInspector({ thread, embedded = false }: ThreadInspectorProps): JSX.Element {
+function ThreadInspector({
+  thread,
+  embedded = false,
+  onOpenFile,
+  onViewArtifactInChat,
+}: ThreadInspectorProps): JSX.Element {
   const { t }: ReturnType<typeof useI18n> = useI18n();
   const dispatch: (action: UIAction) => void = useRuntimeStore(
     (s: RuntimeStore): ((action: UIAction) => void) => s.dispatch
@@ -37,24 +53,8 @@ function ThreadInspector({ thread, embedded = false }: ThreadInspectorProps): JS
   const retryRun: (threadId: string, runId: string) => void = useRuntimeStore(
     (s: RuntimeStore): ((threadId: string, runId: string) => void) => s.retryRun
   );
-  const promoteThread: (threadId: string) => void = useRuntimeStore(
-    (s: RuntimeStore): ((threadId: string) => void) => s.promoteThread
-  );
-  const patchFinding: (threadId: string, finding: string) => void = useRuntimeStore(
-    (s: RuntimeStore): ((threadId: string, finding: string) => void) => s.patchFinding
-  );
-  const decideFile: (params: FileDecisionParams) => void = useRuntimeStore(
-    (s: RuntimeStore): ((params: FileDecisionParams) => void) => s.decideFile
-  );
-  const acceptFile: (params: AcceptFileParams) => Promise<void> = useRuntimeStore(
-    (s: RuntimeStore): ((params: AcceptFileParams) => Promise<void>) => s.acceptFile
-  );
 
   const [selectedRunId, setSelectedRunId]: [
-    string | undefined,
-    Dispatch<SetStateAction<string | undefined>>
-  ] = useState<string | undefined>(undefined);
-  const [selectedArtifactId, setSelectedArtifactId]: [
     string | undefined,
     Dispatch<SetStateAction<string | undefined>>
   ] = useState<string | undefined>(undefined);
@@ -79,7 +79,13 @@ function ThreadInspector({ thread, embedded = false }: ThreadInspectorProps): JS
 
   function viewArtifact(runId: string, artifactId?: string): void {
     setSelectedRunId(runId);
-    setSelectedArtifactId(artifactId);
+    const resolvedId: string | undefined =
+      artifactId ??
+      thread.artifacts.find((artifact: Artifact): boolean => artifact.runId === runId)?.id;
+    if (resolvedId && onViewArtifactInChat) {
+      onViewArtifactInChat(resolvedId);
+      return;
+    }
     setTab("artifact");
   }
 
@@ -149,7 +155,6 @@ function ThreadInspector({ thread, embedded = false }: ThreadInspectorProps): JS
                 setSelectedRunId((selected: string | undefined): string | undefined =>
                   selected === runId ? undefined : runId
                 );
-                setSelectedArtifactId(undefined);
               }}
               onViewArtifact={viewArtifact}
               onViewIteration={viewArtifact}
@@ -160,27 +165,7 @@ function ThreadInspector({ thread, embedded = false }: ThreadInspectorProps): JS
           ))}
 
         {thread.inspectorTab === "artifact" && (
-          <ArtifactView
-            artifacts={thread.artifacts}
-            runs={thread.runs}
-            workspace={thread.workspace}
-            writePolicy={preset.writePolicy}
-            selectedRunId={selectedRunId}
-            selectedArtifactId={selectedArtifactId}
-            onPromote={
-              thread.mode === "single" &&
-              thread.messages.some((message: ChatMessage): boolean => message.role === "user")
-                ? (): void => promoteThread(thread.id)
-                : undefined
-            }
-            onPatchFinding={(finding: string): void => patchFinding(thread.id, finding)}
-            onFileDecision={(artifact: Artifact, path: string, decision: FileDecision): void =>
-              decideFile({ threadId: thread.id, artifactId: artifact.id, path, decision })
-            }
-            onAcceptFile={(artifact: Artifact, path: string, confirmed: boolean): Promise<void> =>
-              acceptFile({ threadId: thread.id, artifactId: artifact.id, path, confirmed })
-            }
-          />
+          <GitDiffView workspace={thread.workspace} onOpenFile={onOpenFile} />
         )}
       </div>
     </aside>

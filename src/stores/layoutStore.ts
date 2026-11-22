@@ -60,6 +60,7 @@ export const useLayoutStore: UseBoundStore<StoreApi<LayoutStore>> = create<Layou
     centerMode: "agent",
     agentTab: "chat",
     searchMode: null,
+    focusedArtifactId: null,
 
     setSidebarCollapsed: (sidebarCollapsed: boolean): void => set({ sidebarCollapsed }),
     setSidebarOverlay: (sidebarOverlay: boolean): void => set({ sidebarOverlay }),
@@ -103,6 +104,7 @@ export const useLayoutStore: UseBoundStore<StoreApi<LayoutStore>> = create<Layou
     setCenterMode: (centerMode: CenterMode): void => set({ centerMode }),
     setAgentTab: (agentTab: AgentTab): void => set({ agentTab }),
     setSearchMode: (searchMode: WorkspaceSearchMode | null): void => set({ searchMode }),
+    setFocusedArtifactId: (focusedArtifactId: string | null): void => set({ focusedArtifactId }),
     closeOverlays: (): void => set({ sidebarOverlay: false, searchMode: null }),
   })
 );

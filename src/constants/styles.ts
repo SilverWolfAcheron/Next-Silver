@@ -46,8 +46,8 @@ export const RUN_STATUS_COLORS: Record<RunStatus, string> = {
 };
 
 export const DIFF_LINE_STYLES: Record<DiffLineKind, string> = {
-  added: "bg-success/10 text-label",
-  removed: "bg-danger/10 text-danger",
-  meta: "text-secondary",
+  added: "bg-success/16 text-label",
+  removed: "bg-danger/16 text-label",
+  meta: "bg-fill/55 text-secondary",
   context: "text-label",
 };

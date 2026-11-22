@@ -1,4 +1,5 @@
-import type { ChatMessage, WorkspaceEntry } from "../agent-core/types";
+import type { FileDecision } from "../agent-core/diff";
+import type { Artifact, ChatMessage, WorkspaceEntry, WorkspaceSummary, WritePolicy } from "../agent-core/types";
 import type { ModelMenuState } from "./composer";
 import type { AgentTab } from "./layout";
 
@@ -8,6 +9,24 @@ export interface AgentPaneProps {
   hideTabs?: boolean;
   centered?: boolean;
   onPickReferenceFile?: () => void;
+  onOpenFile?: (path: string) => void;
+}
+
+export interface ChatArtifactBuckets {
+  byMessageId: Map<string, Artifact[]>;
+  trailing: Artifact[];
+}
+
+export interface ChatArtifactCardProps {
+  artifact: Artifact;
+  runTitle?: string;
+  workspace?: WorkspaceSummary;
+  writePolicy: WritePolicy;
+  focused?: boolean;
+  defaultExpanded?: boolean;
+  onPatchFinding: (finding: string) => void;
+  onFileDecision: (path: string, decision: FileDecision) => void;
+  onAcceptFile: (path: string, confirmed: boolean) => Promise<void>;
 }
 
 export interface ThreadViewProps {

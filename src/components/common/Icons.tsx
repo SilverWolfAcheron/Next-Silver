@@ -180,3 +180,14 @@ export function SettingsGearIcon({
     </svg>
   );
 }
+
+export function GitBranchIcon({ className = "h-3.5 w-3.5 shrink-0" }: IconProps): JSX.Element {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" className={className}>
+      <circle cx="5" cy="3.5" r="1.5" stroke="currentColor" strokeWidth="1.3" />
+      <circle cx="11" cy="5.5" r="1.5" stroke="currentColor" strokeWidth="1.3" />
+      <circle cx="5" cy="12.5" r="1.5" stroke="currentColor" strokeWidth="1.3" />
+      <path d="M5 5v6M11 7a3.5 3.5 0 0 1-3.5 3.5H5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+    </svg>
+  );
+}

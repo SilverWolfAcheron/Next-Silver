@@ -145,6 +145,8 @@ export const jaErrors: ErrorMessages = {
   WORKSPACE_DRAFT_TOO_LONG: "下書きは 100,000 文字以内にしてください。",
   WORKSPACE_SWITCH_WHILE_RUNNING: "先にこの会話の作業項目を停止してからワークスペースを変更してください。",
   WORKSPACE_NO_WRITABLE_THREAD: "現在のワークスペースにドキュメントを書き込める会話がありません。",
+  WORKSPACE_GIT_UNAVAILABLE: "Git コマンドが見つからないため差分を取得できません。",
+  WORKSPACE_GIT_DIFF_FAILED: "Git 差分の取得に失敗しました。リポジトリ状態を確認して再試行してください。",
   BACKUP_INVALID_FORMAT: "Silver の会話バックアップファイルではありません。",
   BACKUP_UNREADABLE_THREAD: "バックアップ内に読み込めない会話があります。",
 

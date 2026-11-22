@@ -3,6 +3,8 @@ import { MAX_HIGHLIGHT_CHARS } from "../../constants/editor";
 import { JSX_MAX_DEPTH } from "../../constants/syntax";
 import type { HighlightedDocument } from "../../types/editor";
 import { detectLanguage, languageLabel } from "./detect";
+import { highlightDiffLines as highlightDiffLinesWith } from "./diffHighlight";
+import type { DiffHighlightInputLine } from "./diffHighlight";
 import { enhanceCodeHast } from "./enhance";
 import { highlightTsxSegments } from "./jsx";
 import { highlightMarkdown } from "./markdown";
@@ -11,6 +13,8 @@ import { lowlight } from "./registry";
 export { MAX_HIGHLIGHT_CHARS } from "../../constants/editor";
 export type { HighlightedDocument } from "../../types/editor";
 export { detectLanguage, languageLabel } from "./detect";
+export { stripDiffPrefixChar } from "./diffHighlight";
+export type { DiffHighlightInputLine } from "./diffHighlight";
 
 function isJsxPath(path?: string): boolean {
   if (!path) return false;
@@ -85,4 +89,11 @@ export function highlightSource(source: string, path?: string): HighlightedDocum
   } catch {
     return null;
   }
+}
+
+export function highlightDiff(
+  lines: readonly DiffHighlightInputLine[],
+  path?: string
+): (ElementContent[] | null)[] {
+  return highlightDiffLinesWith(lines, path, highlightSource);
 }
