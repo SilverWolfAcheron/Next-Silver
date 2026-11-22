@@ -21,6 +21,7 @@ import {
   writeWorkspaceFile, lookupWorkspace,
 } from "./workspace";
 import { checkName, runCheck } from "./check";
+import { readWorkspaceGitDiff } from "./gitDiff";
 
 export interface DesktopRuntime {
   getState(): DesktopSnapshot;
@@ -318,6 +319,7 @@ export function createRuntime(
       case "workspace.read": return readWorkspaceFile(await workspace(id(a)), text(b));
       case "workspace.search": return searchWorkspaceFiles(await workspace(id(a)), text(b), { limit: typeof c === "number" ? c : 24 });
       case "workspace.searchText": return searchWorkspaceText(await workspace(id(a)), text(b), { limit: typeof c === "number" ? c : 40 });
+      case "workspace.gitDiff": return readWorkspaceGitDiff(await workspace(id(a)), dataDir);
       case "workspace.export": {
         const binding: WorkspaceSummary = await workspace(id(a));
         if (!latest.current.threads.some((thread: Thread): boolean => thread.workspace?.id === binding.id && getPreset(thread.presetId).writePolicy !== "none")) {

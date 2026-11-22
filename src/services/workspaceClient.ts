@@ -1,6 +1,7 @@
 import { AppError, ERROR_CODES, serializeErrorCode } from "../agent-core/errors";
 import type { WorkspaceEntry, WorkspaceSummary, WorkspaceTextMatch } from "../agent-core/types";
 import type { AppErrorOptions, ErrorCode } from "../types/errors";
+import type { WorkspaceGitDiff } from "../types/git";
 import type { WorkspaceSearchOptions } from "../types/workspace";
 import { chooseDirectory, desktopAction, desktopAvailable } from "./desktopClient";
 
@@ -84,6 +85,11 @@ export const exportWorkspaceDocument = (
   body: string
 ): Promise<string> =>
   desktopAction<string>("workspace.export", workspace.id, filename, body);
+
+export const readWorkspaceGitDiff = (
+  workspace: WorkspaceSummary
+): Promise<WorkspaceGitDiff> =>
+  desktopAction<WorkspaceGitDiff>("workspace.gitDiff", workspace.id);
 
 export function workspaceErrorText(error: unknown): string {
   return serializeErrorCode(error, ERROR_CODES.WORKSPACE_ACCESS_FAILED);

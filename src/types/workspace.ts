@@ -20,8 +20,10 @@ export interface WorkspaceSearchOptions {
 export interface WorkspaceExplorerProps {
   workspace?: WorkspaceSummary;
   selectedPath?: string;
+  changesMode?: boolean;
   onBind: (workspace: WorkspaceSummary) => void;
   onPreview: (path: string) => void;
+  onSelectChangedFile?: (path: string) => void;
   onSearchText?: () => void;
 }
 

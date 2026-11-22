@@ -145,6 +145,8 @@ export const enErrors: ErrorMessages = {
   WORKSPACE_DRAFT_TOO_LONG: "Draft message cannot exceed 100,000 characters.",
   WORKSPACE_SWITCH_WHILE_RUNNING: "Stop active work items in this conversation before switching workspaces.",
   WORKSPACE_NO_WRITABLE_THREAD: "No conversation in the current workspace permits writing documents.",
+  WORKSPACE_GIT_UNAVAILABLE: "Git is not available on this machine to inspect repository changes.",
+  WORKSPACE_GIT_DIFF_FAILED: "Failed to read Git diff. Check the repository status and try again.",
   BACKUP_INVALID_FORMAT: "File is not a valid Silver conversation backup.",
   BACKUP_UNREADABLE_THREAD: "Backup contains an unreadable conversation.",
 

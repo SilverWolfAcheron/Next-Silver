@@ -145,6 +145,8 @@ export const zhErrors: ErrorMessages = {
   WORKSPACE_DRAFT_TOO_LONG: "对话草稿不能超过 100,000 个字符。",
   WORKSPACE_SWITCH_WHILE_RUNNING: "请先停止该对话的工作项，再更换工作区。",
   WORKSPACE_NO_WRITABLE_THREAD: "当前工作区没有可写文稿的对话。",
+  WORKSPACE_GIT_UNAVAILABLE: "未检测到 Git 命令，无法读取仓库改动。",
+  WORKSPACE_GIT_DIFF_FAILED: "读取 Git 改动失败，请检查仓库状态后重试。",
   BACKUP_INVALID_FORMAT: "文件不是 Silver 对话备份。",
   BACKUP_UNREADABLE_THREAD: "备份中有无法读取的对话。",
 

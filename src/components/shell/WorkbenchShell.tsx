@@ -9,6 +9,7 @@ import {
 import { useGlobalShortcuts } from "../../hooks/useGlobalShortcuts";
 import { useI18n } from "../../hooks/useI18n";
 import { useSidebarResize } from "../../hooks/useSidebarResize";
+import { useWorkspaceGitDiff } from "../../hooks/useWorkspaceGitDiff";
 import { useComposerStore } from "../../stores/composerStore";
 import { useEditorStore } from "../../stores/editorStore";
 import { useLayoutStore } from "../../stores/layoutStore";
@@ -110,6 +111,11 @@ export function WorkbenchShell(): JSX.Element {
 
   const threadId: string | undefined = currentThread?.id;
   const workspace: WorkspaceSummary | undefined = currentThread?.workspace;
+  const changesMode: boolean = centerMode === "agent" && agentTab === "artifact";
+  const {
+    selectedPath: selectedDiffPath,
+    selectPath: selectDiffPath,
+  }: ReturnType<typeof useWorkspaceGitDiff> = useWorkspaceGitDiff(workspace, changesMode);
   const scope: string = makeEditorScope(threadId, workspace?.id);
   const activePreview: FilePreview | null =
     filePreview?.threadId === threadId && workspace?.id === filePreview?.workspaceId
@@ -231,6 +237,7 @@ export function WorkbenchShell(): JSX.Element {
               hideTabs
               centered
               onPickReferenceFile={(): void => setSearchMode("attach")}
+              onOpenFile={(path: string): void => openFileInCenter(path)}
             />
           )}
         </div>
@@ -254,12 +261,17 @@ export function WorkbenchShell(): JSX.Element {
         {filesOpen && (
           <WorkspaceExplorer
             workspace={workspace}
-            selectedPath={activePreview?.path}
+            changesMode={changesMode}
+            selectedPath={changesMode ? (selectedDiffPath ?? undefined) : activePreview?.path}
             onBind={(nextWorkspace: WorkspaceSummary): void => {
               if (currentThread && filePreview?.threadId === currentThread.id) closeFilePreview();
               void attachWorkspace(nextWorkspace);
             }}
             onPreview={(path: string): void => openFileInCenter(path)}
+            onSelectChangedFile={(path: string): void => {
+              selectDiffPath(path);
+              if (isNarrow()) setFilesOpen(false);
+            }}
             onSearchText={(): void => setSearchMode("text")}
           />
         )}

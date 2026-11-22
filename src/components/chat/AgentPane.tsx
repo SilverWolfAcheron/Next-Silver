@@ -2,11 +2,12 @@ import type { JSX } from "react";
 import type { PendingConfirmation, Thread } from "../../agent-core/types";
 import { AGENT_TAB_IDS } from "../../constants/layout";
 import { useI18n } from "../../hooks/useI18n";
+import { useLayoutStore } from "../../stores/layoutStore";
 import { useRuntimeStore } from "../../stores/runtimeStore";
 import type { AgentPaneProps } from "../../types/chat";
 import type { AgentTab } from "../../types/layout";
 import type { UIAction } from "../../types/runtime";
-import type { RuntimeStore } from "../../types/stores";
+import type { LayoutStore, RuntimeStore } from "../../types/stores";
 import { InspectorPane } from "../inspector/InspectorPane";
 import { Composer } from "./Composer";
 import { ThreadView } from "./ThreadView";
@@ -17,6 +18,7 @@ export function AgentPane({
   hideTabs = false,
   centered = false,
   onPickReferenceFile,
+  onOpenFile,
 }: AgentPaneProps): JSX.Element {
   const { t }: ReturnType<typeof useI18n> = useI18n();
   const currentThread: Thread | null = useRuntimeStore(
@@ -28,6 +30,9 @@ export function AgentPane({
   const dispatch: (action: UIAction) => void = useRuntimeStore(
     (s: RuntimeStore): ((action: UIAction) => void) => s.dispatch
   );
+  const setFocusedArtifactId: (artifactId: string | null) => void = useLayoutStore(
+    (s: LayoutStore): ((artifactId: string | null) => void) => s.setFocusedArtifactId
+  );
   const confirmation: PendingConfirmation | undefined = currentThread?.pendingConfirmation;
 
   function select(next: AgentTab): void {
@@ -36,6 +41,11 @@ export function AgentPane({
       dispatch({ type: "SET_INSPECTOR_TAB", threadId: currentThread.id, tab: next });
       dispatch({ type: "SET_INSPECTOR_OPEN", threadId: currentThread.id, open: true });
     }
+  }
+
+  function handleViewArtifactInChat(artifactId: string): void {
+    setFocusedArtifactId(artifactId);
+    select("chat");
   }
 
   return (
@@ -90,12 +100,24 @@ export function AgentPane({
           <ThreadView centered={centered} onPickReferenceFile={onPickReferenceFile} />
         ) : centered ? (
           <div className="flex min-h-0 flex-1 justify-center bg-surface">
-            <div className="flex min-h-0 w-full max-w-4xl flex-col">
-              <InspectorPane embedded />
+            <div
+              className={`flex min-h-0 w-full flex-col ${
+                tab === "artifact" ? "max-w-5xl" : "max-w-4xl"
+              }`}
+            >
+              <InspectorPane
+                embedded
+                onOpenFile={onOpenFile}
+                onViewArtifactInChat={handleViewArtifactInChat}
+              />
             </div>
           </div>
         ) : (
-          <InspectorPane embedded />
+          <InspectorPane
+            embedded
+            onOpenFile={onOpenFile}
+            onViewArtifactInChat={handleViewArtifactInChat}
+          />
         )}
       </div>
       <Composer />

@@ -1,6 +1,6 @@
 import type { Autonomy, RunStatus, SeatRole } from "../agent-core/types";
-
 import type { ErrorMessages } from "./errors";
+import type { GitFileStatus } from "./git";
 
 export type Locale = "zh" | "ja" | "en";
 
@@ -308,6 +308,29 @@ export interface Messages {
     patchFinding: string;
     exporting: string;
     exportMarkdown: string;
+  };
+
+  gitDiff: {
+    noWorkspace: string;
+    notGitRepo: string;
+    cleanWorkingTree: string;
+    loading: string;
+    refresh: string;
+    expandAll: string;
+    collapseAll: string;
+    openFile: string;
+    binaryFile: string;
+    emptyDiff: string;
+    truncatedFile: (shown: number) => string;
+    truncatedWorkspace: string;
+    filesSummary: (count: number) => string;
+    changedTreeEmpty: string;
+    changedTreeHeader: (count: number) => string;
+    agentArtifactLabel: string;
+    agentArtifactFiles: (count: number) => string;
+    agentArtifactSettled: string;
+    agentArtifactPending: (count: number) => string;
+    statuses: Record<GitFileStatus, string>;
   };
 
   errors: ErrorMessages;

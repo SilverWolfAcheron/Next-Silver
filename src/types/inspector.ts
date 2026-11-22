@@ -31,11 +31,15 @@ export interface PendingAcceptance {
 
 export interface InspectorPaneProps {
   embedded?: boolean;
+  onOpenFile?: (path: string) => void;
+  onViewArtifactInChat?: (artifactId: string) => void;
 }
 
 export interface ThreadInspectorProps {
   thread: Thread;
   embedded?: boolean;
+  onOpenFile?: (path: string) => void;
+  onViewArtifactInChat?: (artifactId: string) => void;
 }
 
 export interface BriefViewProps {

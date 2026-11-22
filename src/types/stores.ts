@@ -3,6 +3,7 @@ import type { SilverState } from "../agent-core/silverState";
 import type { Brief, ChatDraft, Thread, WorkspaceSummary } from "../agent-core/types";
 import type { ComposerAttachment, ComposerPrompt } from "./composer";
 import type { EditorTabState, FilePreview } from "./editor";
+import type { GitDiffLoadStatus, WorkspaceGitDiff } from "./git";
 import type { Locale } from "./i18n";
 import type { AgentTab, CenterMode, ResizeSide, WorkspaceSearchMode } from "./layout";
 import type { DesktopConnection, UIAction } from "./runtime";
@@ -59,6 +60,18 @@ export interface EditorStore {
   clearThreadTabs: (threadId: string) => void;
 }
 
+export interface GitDiffStore {
+  workspaceId: string | null;
+  status: GitDiffLoadStatus;
+  diff: WorkspaceGitDiff | null;
+  error: string;
+  selectedPath: string | null;
+  selectionSeq: number;
+  loadGitDiff: (workspace: WorkspaceSummary) => Promise<void>;
+  selectDiffPath: (path: string | null) => void;
+  clearGitDiff: () => void;
+}
+
 export interface LayoutStore {
   sidebarCollapsed: boolean;
   sidebarOverlay: boolean;
@@ -69,6 +82,7 @@ export interface LayoutStore {
   centerMode: CenterMode;
   agentTab: AgentTab;
   searchMode: WorkspaceSearchMode | null;
+  focusedArtifactId: string | null;
 
   setSidebarCollapsed: (collapsed: boolean) => void;
   setSidebarOverlay: (open: boolean) => void;
@@ -82,6 +96,7 @@ export interface LayoutStore {
   setCenterMode: (mode: CenterMode) => void;
   setAgentTab: (tab: AgentTab) => void;
   setSearchMode: (mode: WorkspaceSearchMode | null) => void;
+  setFocusedArtifactId: (artifactId: string | null) => void;
   closeOverlays: () => void;
 }
 

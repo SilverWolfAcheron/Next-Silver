@@ -1,5 +1,7 @@
 export type {
   AgentPaneProps,
+  ChatArtifactBuckets,
+  ChatArtifactCardProps,
   MentionMenuProps,
   MessageBubbleProps,
   ModeSelectorProps,
@@ -56,6 +58,19 @@ export type {
   ErrorParams,
   ParsedErrorCode,
 } from "./errors";
+export type {
+  GitDiffFile,
+  GitDiffFileCardProps,
+  GitDiffLine,
+  GitDiffLoadStatus,
+  GitDiffViewProps,
+  GitFileStatus,
+  GitStatusBadgeStyle,
+  GitTreeNode,
+  WorkspaceChangesNodeProps,
+  WorkspaceChangesTreeProps,
+  WorkspaceGitDiff,
+} from "./git";
 export type { Locale, Messages } from "./i18n";
 export type {
   ArtifactViewProps,
@@ -104,6 +119,7 @@ export type {
   EditorStore,
   FileDecisionParams,
   FilePreviewRequest,
+  GitDiffStore,
   LayoutStore,
   LocaleStore,
   RuntimeStore,

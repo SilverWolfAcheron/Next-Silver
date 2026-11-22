@@ -1,13 +1,18 @@
+import type { ElementContent } from "hast";
 import { Fragment } from "react";
 import type { JSX } from "react";
 import { diffNeedsConfirmation, diffPolicyError } from "../../agent-core/diff";
 import type { DiffFile, DiffLineKind, FileChange, FileDecision } from "../../agent-core/diff";
+import { GIT_DIFF_SIGN_STYLES } from "../../constants/git";
 import { DIFF_CONFIRM_FILE_THRESHOLD } from "../../constants/inspector";
 import { DIFF_ACTION_CLASS, DIFF_LINE_STYLES } from "../../constants/styles";
 import { useDiffAcceptance } from "../../hooks/useDiffAcceptance";
+import { useDiffHighlight } from "../../hooks/useDiffHighlight";
 import { useI18n } from "../../hooks/useI18n";
 import { formatError } from "../../i18n/errors";
 import type { DiffArtifactProps } from "../../types/inspector";
+import { stripDiffPrefixChar } from "../../utils/syntax/diffHighlight";
+import { renderHastNodes } from "../common/HastNodes";
 
 export function DiffArtifact({
   artifact,
@@ -129,29 +134,18 @@ export function DiffArtifact({
           <section key={fileIndex} className="min-w-0 overflow-hidden rounded-[10px] border border-separator">
             {(file.path || file.additions > 0 || file.deletions > 0) && (
               <div className="flex items-start justify-between gap-2 border-b border-separator bg-canvas px-2 py-2">
-                <span className="text-[13px] wrap-anywhere text-label">{file.path}</span>
+                <span className="font-mono text-[12.5px] wrap-anywhere text-label">{file.path}</span>
                 <span
-                  className="flex shrink-0 gap-2 font-mono text-[13px]"
+                  className="flex shrink-0 gap-2 font-mono text-[12.5px]"
                   aria-label={t.diff.statsAriaLabel(file.additions, file.deletions)}
                 >
-                  <span className="text-secondary">+{file.additions}</span>
+                  <span className="text-success">+{file.additions}</span>
                   <span className="text-danger">−{file.deletions}</span>
                 </span>
               </div>
             )}
 
-            <pre className="overflow-x-auto py-1 font-mono text-[13px] leading-[18px]">
-              {file.lines.map(
-                (line: { text: string; kind: DiffLineKind }, index: number): JSX.Element => (
-                  <span
-                    key={index}
-                    className={`block w-max min-w-full px-2 ${DIFF_LINE_STYLES[line.kind]}`}
-                  >
-                    {line.text || "\u00a0"}
-                  </span>
-                )
-              )}
-            </pre>
+            <HighlightedDiffLines path={file.path} lines={file.lines} />
 
             <div className="border-t border-separator px-2 py-1">
               {file.error && <p className="py-1 text-[13px] text-danger">{formatError(file.error, t)}</p>}
@@ -203,6 +197,51 @@ export function DiffArtifact({
           </section>
         );
       })}
+    </div>
+  );
+}
+
+function HighlightedDiffLines({
+  path,
+  lines,
+}: {
+  path?: string;
+  lines: { text: string; kind: DiffLineKind }[];
+}): JSX.Element {
+  const highlighted: (ElementContent[] | null)[] | null = useDiffHighlight(path, lines);
+
+  return (
+    <div className="hljs overflow-x-auto bg-surface/65 py-1 font-mono text-[12.5px] leading-[19px]">
+      <table className="w-max min-w-full border-collapse">
+        <tbody>
+          {lines.map((line: { text: string; kind: DiffLineKind }, index: number): JSX.Element => {
+            const { prefix, code }: { prefix: string; code: string } = stripDiffPrefixChar(line);
+            const tokens: ElementContent[] | null = highlighted?.[index] ?? null;
+            const isMeta: boolean = line.kind === "meta";
+
+            return (
+              <tr key={index} className={DIFF_LINE_STYLES[line.kind]}>
+                <td className={`w-5 text-center select-none ${GIT_DIFF_SIGN_STYLES[line.kind]}`}>
+                  {isMeta ? "" : prefix}
+                </td>
+                <td className="pr-3 pl-1.5 whitespace-pre">
+                  {isMeta ? (
+                    code || "\u00a0"
+                  ) : tokens ? (
+                    tokens.length > 0 ? (
+                      renderHastNodes(tokens, `d${index}`)
+                    ) : (
+                      "\u00a0"
+                    )
+                  ) : (
+                    code || "\u00a0"
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
