@@ -1,19 +1,38 @@
 @import "tailwindcss";
 
 @theme {
-  --color-canvas: #f9f9f7;
-  --color-surface: #fcfcfb;
-  --color-group: #ffffff;
-  --color-fill: #f0f4f8;
-  --color-label: #141413;
-  --color-secondary: #5e5d59;
-  --color-tertiary: #87867f;
-  --color-separator: rgba(20, 20, 19, 0.10);
-  --color-accent: #c6613f;
-  --color-on-accent: #ffffff;
-  --color-success: #34C759;
-  --color-warning: #FF9500;
-  --color-danger: #b53333;
+  --color-canvas: #efe6d5;
+  --color-surface: #f6efe2;
+  --color-group: #fbf6ec;
+  --color-fill: #e6dac3;
+  --color-label: #2c241b;
+  --color-secondary: #665948;
+  --color-tertiary: #8f806b;
+  --color-separator: rgba(74, 56, 35, 0.14);
+  --color-accent: #b85635;
+  --color-on-accent: #fdfaf3;
+  --color-success: #3f7d4c;
+  --color-warning: #b8741e;
+  --color-danger: #a83832;
+  --color-scrollbar: rgba(94, 74, 48, 0.24);
+  --color-scrollbar-hover: rgba(94, 74, 48, 0.44);
+  --color-scrollbar-active: rgba(184, 86, 53, 0.58);
+
+  --syntax-comment: #2d7a36;
+  --syntax-keyword: #0b42cc;
+  --syntax-control: #a115c2;
+  --syntax-string: #a31515;
+  --syntax-number: #07764b;
+  --syntax-function: #795e26;
+  --syntax-type: #1e768f;
+  --syntax-variable: #0e2f8a;
+  --syntax-constant: #006ec2;
+  --syntax-property: #001080;
+  --syntax-attr: #0451a5;
+  --syntax-tag: #800000;
+  --syntax-meta: #8a4f0e;
+  --syntax-operator: #4a3f32;
+  --syntax-punctuation: #6e6150;
 
   --font-family-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
 
@@ -33,23 +52,118 @@
 }
 
 .dark {
-  --color-canvas: #262624;
-  --color-surface: #30302e;
-  --color-group: #3d3d3a;
-  --color-fill: #454540;
-  --color-label: #faf9f5;
-  --color-secondary: #b0aea5;
-  --color-tertiary: #8a887f;
-  --color-separator: rgba(250, 249, 245, 0.12);
-  --color-accent: #d97757;
-  --color-on-accent: #ffffff;
-  --color-success: #30D158;
-  --color-warning: #FF9F0A;
-  --color-danger: #e05252;
+  color-scheme: dark;
+  --color-canvas: #241f19;
+  --color-surface: #2c261f;
+  --color-group: #362f26;
+  --color-fill: #443b2f;
+  --color-label: #f3ead8;
+  --color-secondary: #bfb29b;
+  --color-tertiary: #92846f;
+  --color-separator: rgba(243, 234, 216, 0.13);
+  --color-accent: #d4764e;
+  --color-on-accent: #fdf8ee;
+  --color-success: #6db87c;
+  --color-warning: #e0a045;
+  --color-danger: #de665c;
+  --color-scrollbar: rgba(243, 234, 216, 0.20);
+  --color-scrollbar-hover: rgba(243, 234, 216, 0.36);
+  --color-scrollbar-active: rgba(212, 118, 78, 0.56);
+
+  --syntax-comment: #7ca866;
+  --syntax-keyword: #5ca4e0;
+  --syntax-control: #d08fcb;
+  --syntax-string: #d69980;
+  --syntax-number: #b5d4a8;
+  --syntax-function: #e2e0a8;
+  --syntax-type: #52cfb6;
+  --syntax-variable: #9cdcfe;
+  --syntax-constant: #4fc1ff;
+  --syntax-property: #9cdcfe;
+  --syntax-attr: #9cdcfe;
+  --syntax-tag: #5ca4e0;
+  --syntax-meta: #d7ba7d;
+  --syntax-operator: #d4c9b8;
+  --syntax-punctuation: #9e9382;
+}
+
+:root {
+  color-scheme: light;
 }
 
 *, *::before, *::after {
   box-sizing: border-box;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: var(--color-scrollbar);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-scrollbar-hover);
+}
+
+*::-webkit-scrollbar-thumb:active {
+  background-color: var(--color-scrollbar-active);
+}
+
+*::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+[role="tablist"]::-webkit-scrollbar {
+  height: 5px;
+}
+
+::selection {
+  background-color: color-mix(in srgb, var(--color-accent) 26%, transparent);
+  color: var(--color-label);
+}
+
+input, textarea {
+  caret-color: var(--color-accent);
+}
+
+input[type="number"] {
+  appearance: textfield;
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="search"]::-webkit-search-decoration,
+input[type="search"]::-webkit-search-cancel-button,
+input[type="search"]::-webkit-search-results-button,
+input[type="search"]::-webkit-search-results-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+select,
+select option {
+  background-color: var(--color-group);
+  color: var(--color-label);
 }
 
 html, body, #root {
@@ -65,4 +179,137 @@ body {
   background-color: var(--color-canvas);
   color: var(--color-label);
   -webkit-font-smoothing: antialiased;
+}
+
+.hljs {
+  color: var(--color-label);
+  background: transparent;
+}
+
+.hljs-comment,
+.hljs-quote {
+  color: var(--syntax-comment);
+  font-style: italic;
+}
+
+.hljs-keyword,
+.hljs-doctag,
+.hljs-template-tag,
+.hljs-literal,
+.hljs-meta .hljs-keyword {
+  color: var(--syntax-keyword);
+}
+
+.hljs-keyword.control_ {
+  color: var(--syntax-control);
+}
+
+.hljs-name,
+.hljs-selector-tag {
+  color: var(--syntax-tag);
+}
+
+.hljs-variable.language_ {
+  color: var(--syntax-keyword);
+  font-style: italic;
+}
+
+.hljs-string,
+.hljs-regexp,
+.hljs-meta .hljs-string {
+  color: var(--syntax-string);
+}
+
+.hljs-number,
+.hljs-symbol,
+.hljs-bullet {
+  color: var(--syntax-number);
+}
+
+.hljs-char.escape_ {
+  color: var(--syntax-meta);
+}
+
+.hljs-title,
+.hljs-title.function_,
+.hljs-title.function_.invoke__,
+.hljs-link {
+  color: var(--syntax-function);
+}
+
+.hljs-link {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.hljs-type,
+.hljs-built_in,
+.hljs-title.class_,
+.hljs-title.class_.inherited__ {
+  color: var(--syntax-type);
+}
+
+.hljs-variable,
+.hljs-template-variable {
+  color: var(--syntax-variable);
+}
+
+.hljs-variable.constant_ {
+  color: var(--syntax-constant);
+}
+
+.hljs-property {
+  color: var(--syntax-property);
+}
+
+.hljs-attr,
+.hljs-attribute,
+.hljs-selector-attr,
+.hljs-selector-class,
+.hljs-selector-id,
+.hljs-selector-pseudo {
+  color: var(--syntax-attr);
+}
+
+.hljs-meta,
+.hljs-code,
+.hljs-formula {
+  color: var(--syntax-meta);
+}
+
+.hljs-operator {
+  color: var(--syntax-operator);
+}
+
+.hljs-punctuation,
+.hljs-tag {
+  color: var(--syntax-punctuation);
+}
+
+.hljs-subst,
+.hljs-params {
+  color: var(--color-label);
+}
+
+.hljs-section {
+  color: var(--syntax-keyword);
+  font-weight: 600;
+}
+
+.hljs-emphasis {
+  font-style: italic;
+}
+
+.hljs-strong {
+  font-weight: 600;
+}
+
+.hljs-addition {
+  color: var(--color-success);
+  background-color: color-mix(in srgb, var(--color-success) 14%, transparent);
+}
+
+.hljs-deletion {
+  color: var(--color-danger);
+  background-color: color-mix(in srgb, var(--color-danger) 14%, transparent);
 }
