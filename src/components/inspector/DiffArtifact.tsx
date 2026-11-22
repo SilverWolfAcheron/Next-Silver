@@ -1,8 +1,8 @@
 import type { ElementContent } from "hast";
 import { Fragment } from "react";
 import type { JSX } from "react";
-import { diffNeedsConfirmation, diffPolicyError } from "../../agent-core/diff";
-import type { DiffFile, DiffLineKind, FileChange, FileDecision } from "../../agent-core/diff";
+import type { DiffFile, DiffLineKind, FileChange, FileDecision } from "../../types/diff";
+import { diffNeedsConfirmation, diffPolicyError } from "../../utils/diff";
 import { GIT_DIFF_SIGN_STYLES } from "../../constants/git";
 import { DIFF_CONFIRM_FILE_THRESHOLD } from "../../constants/inspector";
 import { DIFF_ACTION_CLASS, DIFF_LINE_STYLES } from "../../constants/styles";

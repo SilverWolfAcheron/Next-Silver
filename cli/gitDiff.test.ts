@@ -7,7 +7,7 @@ import test from "node:test";
 import { promisify } from "node:util";
 import type { WorkspaceSummary } from "../src/agent-core/types.ts";
 import type { GitDiffFile, GitTreeNode, WorkspaceGitDiff } from "../src/types/git.ts";
-import { buildGitChangesTree } from "../src/utils/gitDiffData.ts";
+import { buildGitChangesTree } from "../src/utils/diff.ts";
 import { parseGitDiffOutput, readWorkspaceGitDiff } from "./gitDiff.ts";
 import { bindWorkspace } from "./workspace.ts";
 

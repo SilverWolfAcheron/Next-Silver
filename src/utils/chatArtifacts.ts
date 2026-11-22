@@ -1,7 +1,7 @@
-import { parseDiff } from "../agent-core/diff";
-import type { DiffFile } from "../agent-core/diff";
 import type { Artifact, ChatMessage, Run, Thread } from "../agent-core/types";
 import type { ChatArtifactBuckets } from "../types/chat";
+import type { DiffFile } from "../types/diff";
+import { parseDiff } from "./diff";
 
 export interface DiffArtifactSummary {
   fileCount: number;

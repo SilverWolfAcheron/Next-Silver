@@ -7,7 +7,7 @@ import {
 } from "node:fs/promises";
 import type { FileHandle } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { isDiffPath } from "../src/agent-core/diff.ts";
+import { isDiffPath } from "../src/utils/diff.ts";
 import { AppError, ERROR_CODES, serializeErrorCode } from "../src/agent-core/errors.ts";
 import type { AppErrorOptions, ErrorCode } from "../src/types/errors.ts";
 import type { WorkspaceEntry, WorkspaceSummary, WorkspaceTextMatch } from "../src/agent-core/types.ts";
@@ -432,6 +432,42 @@ export async function searchWorkspaceText(
     }
   }
   return matches;
+}
+
+export function emitWorkspaceChange(workspaceId: string): void {
+  dataChanges.emit(workspaceId);
+}
+
+export async function serializeWorkspaceWrite<T>(root: string, write: () => Promise<T>): Promise<T> {
+  return serializeWrite(root, write);
+}
+
+export function forbidWorkspaceEscape(root: string, path: string): void {
+  forbidEscape(root, path);
+}
+
+export async function resolveWorkspaceDirectory(
+  root: string,
+  parts: string[],
+  create: boolean = false
+): Promise<string> {
+  return resolveDirectory(root, parts, create);
+}
+
+export async function resolveWorkspaceFile(
+  root: string,
+  path: string,
+  createParents: boolean = false
+): Promise<string> {
+  return containedFile(root, path, createParents);
+}
+
+export async function readWorkspaceTarget(path: string): Promise<string | null> {
+  return readTarget(path);
+}
+
+export async function replaceWorkspaceTarget(options: ReplaceFileOptions): Promise<void> {
+  return replaceFile(options);
 }
 
 export function workspaceErrorText(error: unknown): string {

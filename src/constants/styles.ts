@@ -1,5 +1,5 @@
-import type { DiffLineKind } from "../agent-core/diff";
 import type { RunStatus } from "../agent-core/types";
+import type { DiffLineKind } from "../types/diff";
 
 export const COMPOSER_MENU_CLASS: string =
   "absolute bottom-full z-20 mb-2 flex max-h-64 min-w-44 flex-col overflow-y-auto rounded-[12px] border border-separator bg-group p-1 shadow-[0_8px_24px_rgba(44,36,27,0.14)] dark:shadow-[0_10px_28px_rgba(0,0,0,0.45)]";

@@ -1,5 +1,5 @@
-import { applyDiff, diffNeedsConfirmation, diffPolicyError, mergeDiffArtifacts, parseDiff } from "../src/agent-core/diff";
-import type { FileChange } from "../src/agent-core/diff";
+import { applyDiff, diffNeedsConfirmation, diffPolicyError, mergeDiffArtifacts, parseDiff } from "../src/utils/diff";
+import type { FileChange } from "../src/types/diff";
 import { AppError, ERROR_CODES, extractErrorCode, serializeErrorCode } from "../src/agent-core/errors";
 import type { ErrorCode, ParsedErrorCode } from "../src/types/errors";
 import {

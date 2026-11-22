@@ -1,6 +1,8 @@
-import type { JSX } from "react";
+import { Fragment } from "react";
+import type { JSX, MouseEvent } from "react";
 import { EDITOR_CONTROL_CLASS } from "../../constants/styles";
 import { useI18n } from "../../hooks/useI18n";
+import { formatError } from "../../i18n/errors";
 import type { EditorToolbarProps } from "../../types/editor";
 
 export function EditorToolbar({
@@ -11,11 +13,19 @@ export function EditorToolbar({
   workspaceName,
   hasBody,
   findOpen,
+  isEditing,
+  isDirty,
+  saving,
+  savedNotice,
+  saveError,
   detectedLabel,
   onOpenSidebar,
   onOpenAgent,
   onOpenFind,
   onReload,
+  onToggleEdit,
+  onSave,
+  onDiscard,
   onAttachFile,
 }: EditorToolbarProps): JSX.Element {
   const { t }: ReturnType<typeof useI18n> = useI18n();
@@ -39,6 +49,41 @@ export function EditorToolbar({
 
       {path && (
         <div className="flex shrink-0 items-center gap-0.5 pl-1">
+          <button
+            type="button"
+            disabled={!hasBody}
+            aria-pressed={isEditing}
+            onClick={onToggleEdit}
+            className={`${EDITOR_CONTROL_CLASS} ${isEditing ? "bg-fill font-medium text-label" : ""}`}
+          >
+            {isEditing ? t.editor.previewButton : t.editor.editButton}
+          </button>
+
+          {isEditing && (
+            <Fragment>
+              <button
+                type="button"
+                title={t.editor.saveShortcut}
+                disabled={!isDirty || saving}
+                onMouseDown={(event: MouseEvent<HTMLButtonElement>): void => event.preventDefault()}
+                onClick={onSave}
+                className={`${EDITOR_CONTROL_CLASS} ${
+                  isDirty ? "font-medium text-accent hover:text-accent" : ""
+                }`}
+              >
+                {t.editor.saveButton}
+              </button>
+              <button
+                type="button"
+                disabled={!isDirty || saving}
+                onClick={onDiscard}
+                className={EDITOR_CONTROL_CLASS}
+              >
+                {t.editor.discardButton}
+              </button>
+            </Fragment>
+          )}
+
           <button
             type="button"
             aria-label={t.editor.findInFile}
@@ -72,7 +117,22 @@ export function EditorToolbar({
         </div>
       )}
 
-      <div className="ml-auto flex shrink-0 items-center gap-1">
+      <div className="ml-auto flex shrink-0 items-center gap-1.5">
+        {saveError && (
+          <span role="alert" className="max-w-60 truncate text-[11.5px] text-danger" title={formatError(saveError, t)}>
+            {formatError(saveError, t)}
+          </span>
+        )}
+        {!saveError && saving && (
+          <span role="status" className="text-[11.5px] text-secondary">
+            {t.editor.savingButton}
+          </span>
+        )}
+        {!saveError && !saving && savedNotice && (
+          <span role="status" className="text-[11.5px] font-medium text-success">
+            {t.editor.savedNotice}
+          </span>
+        )}
         {path && detectedLabel && (
           <span
             aria-label={t.editor.syntaxHighlightLabel(detectedLabel)}

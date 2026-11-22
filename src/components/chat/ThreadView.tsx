@@ -1,6 +1,6 @@
 import { Fragment, useLayoutEffect, useMemo, useRef } from "react";
 import type { JSX, RefObject, UIEvent } from "react";
-import type { FileDecision } from "../../agent-core/diff";
+import type { FileDecision } from "../../types/diff";
 import { getPreset } from "../../agent-core/presets";
 import type { Artifact, ChatMessage, Thread, WorkspaceSummary, WritePolicy } from "../../agent-core/types";
 import { useI18n } from "../../hooks/useI18n";

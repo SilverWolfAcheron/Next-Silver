@@ -1,5 +1,5 @@
-import type { DiffLineKind } from "../agent-core/diff";
 import type { WorkspaceSummary } from "../agent-core/types";
+import type { DiffLineKind } from "./diff";
 
 export type GitFileStatus = "added" | "modified" | "deleted" | "renamed" | "untracked";
 

@@ -14,7 +14,7 @@ import type {
   WorkspaceGitDiff,
 } from "../../types/git";
 import type { GitDiffStore } from "../../types/stores";
-import { buildGitChangesTree } from "../../utils/gitDiffData";
+import { buildGitChangesTree } from "../../utils/diff";
 import { FileTreeIcon, FolderTreeIcon } from "../common/FileIcons";
 import { ChevronRightIcon } from "../common/Icons";
 

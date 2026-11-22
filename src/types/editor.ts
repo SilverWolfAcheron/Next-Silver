@@ -63,6 +63,7 @@ export interface EditorPaneProps {
 export interface EditorTabBarProps {
   paths: string[];
   activePath: string;
+  dirtyPath?: string;
   onSelect: (path: string) => void;
   onClose: (path: string) => void;
 }
@@ -75,11 +76,19 @@ export interface EditorToolbarProps {
   workspaceName?: string;
   hasBody: boolean;
   findOpen: boolean;
+  isEditing: boolean;
+  isDirty: boolean;
+  saving: boolean;
+  savedNotice: boolean;
+  saveError: string;
   detectedLabel: string | null;
   onOpenSidebar?: () => void;
   onOpenAgent?: () => void;
   onOpenFind: () => void;
   onReload: () => void;
+  onToggleEdit: () => void;
+  onSave: () => void;
+  onDiscard: () => void;
   onAttachFile?: (path: string) => void;
 }
 

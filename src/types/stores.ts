@@ -54,6 +54,7 @@ export interface EditorStore {
   filePreview: FilePreview | null;
   editorTabs: Record<string, EditorTabState>;
   previewFile: (request: FilePreviewRequest) => Promise<void>;
+  updatePreviewBody: (path: string, body: string) => void;
   closeFilePreview: () => void;
   ensureEditorTab: (scope: string, path: string) => void;
   closeEditorTab: (scope: string, path: string) => { next?: string; closingActive: boolean };

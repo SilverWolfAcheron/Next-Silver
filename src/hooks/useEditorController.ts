@@ -1,7 +1,10 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, KeyboardEvent, RefObject, SetStateAction } from "react";
+import { ERROR_CODES, serializeErrorCode } from "../agent-core/errors";
 import type { Thread, WorkspaceSummary } from "../agent-core/types";
 import { EDITOR_LINE_HEIGHT, EMPTY_EDITOR_TABS } from "../constants/editor";
+import { FILE_EDIT_TAB_SPACES } from "../constants/fileEdit";
+import { logError } from "../i18n/errors";
 import { subscribeWorkspaceChanges } from "../services/workspaceClient";
 import { useEditorStore } from "../stores/editorStore";
 import { useRuntimeStore } from "../stores/runtimeStore";
@@ -11,6 +14,7 @@ import type {
   HighlightedDocument,
   ScrollPosition,
 } from "../types/editor";
+import type { LineEnding } from "../types/fileEdit";
 import type { EditorStore, FilePreviewRequest, RuntimeStore } from "../types/stores";
 import {
   buildLineGutter,
@@ -19,6 +23,11 @@ import {
   makeEditorScope,
   normalizeSource,
 } from "../utils/editorData";
+import {
+  detectLineEnding,
+  replaceFileContent,
+  restoreLineEndings,
+} from "../utils/file-edit";
 import { detectLanguage, highlightSource, languageLabel } from "../utils/syntax";
 
 export function useEditorController(onAllTabsClosed?: () => void): {
@@ -31,6 +40,11 @@ export function useEditorController(onAllTabsClosed?: () => void): {
   findOpen: boolean;
   query: string;
   matchIndex: number;
+  isEditing: boolean;
+  isDirty: boolean;
+  saving: boolean;
+  savedNotice: boolean;
+  saveError: string;
   source: string;
   highlighted: HighlightedDocument | null;
   detectedLabel: string | null;
@@ -41,6 +55,7 @@ export function useEditorController(onAllTabsClosed?: () => void): {
   findInputRef: RefObject<HTMLInputElement | null>;
   sectionRef: RefObject<HTMLElement | null>;
   viewportRef: RefObject<HTMLDivElement | null>;
+  textareaRef: RefObject<HTMLTextAreaElement | null>;
   activeMarkRef: RefObject<HTMLElement | null>;
   openFolder: () => Promise<void>;
   openFind: () => void;
@@ -50,8 +65,13 @@ export function useEditorController(onAllTabsClosed?: () => void): {
   openTab: (next: string, focus?: boolean) => void;
   closeTab: (closed: string) => void;
   reloadCurrent: () => void;
+  toggleEdit: () => void;
+  updateDraft: (value: string) => void;
+  saveCurrent: () => Promise<void>;
+  discardChanges: () => void;
   saveScrollPosition: (top: number, left: number) => void;
   handleKeyDown: (event: KeyboardEvent<HTMLElement>) => void;
+  handleTextareaKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
 } {
   const currentThread: Thread | null = useRuntimeStore(
     (s: RuntimeStore): Thread | null => s.currentThread
@@ -68,6 +88,9 @@ export function useEditorController(onAllTabsClosed?: () => void): {
   );
   const previewFile: (request: FilePreviewRequest) => Promise<void> = useEditorStore(
     (s: EditorStore): ((request: FilePreviewRequest) => Promise<void>) => s.previewFile
+  );
+  const updatePreviewBody: (targetPath: string, nextBody: string) => void = useEditorStore(
+    (s: EditorStore): ((targetPath: string, nextBody: string) => void) => s.updatePreviewBody
   );
   const closeFilePreview: () => void = useEditorStore(
     (s: EditorStore): (() => void) => s.closeFilePreview
@@ -101,15 +124,55 @@ export function useEditorController(onAllTabsClosed?: () => void): {
   const [findOpen, setFindOpen]: [boolean, Dispatch<SetStateAction<boolean>>] = useState<boolean>(false);
   const [query, setQuery]: [string, Dispatch<SetStateAction<string>>] = useState<string>("");
   const [matchIndex, setMatchIndex]: [number, Dispatch<SetStateAction<number>>] = useState<number>(0);
+  const [isEditing, setIsEditing]: [boolean, Dispatch<SetStateAction<boolean>>] = useState<boolean>(false);
+  const [draft, setDraft]: [string, Dispatch<SetStateAction<string>>] = useState<string>("");
+  const [saving, setSaving]: [boolean, Dispatch<SetStateAction<boolean>>] = useState<boolean>(false);
+  const [savedNotice, setSavedNotice]: [boolean, Dispatch<SetStateAction<boolean>>] = useState<boolean>(false);
+  const [saveError, setSaveError]: [string, Dispatch<SetStateAction<string>>] = useState<string>("");
 
   const findInputRef: RefObject<HTMLInputElement | null> = useRef<HTMLInputElement>(null);
   const sectionRef: RefObject<HTMLElement | null> = useRef<HTMLElement>(null);
   const viewportRef: RefObject<HTMLDivElement | null> = useRef<HTMLDivElement>(null);
+  const textareaRef: RefObject<HTMLTextAreaElement | null> = useRef<HTMLTextAreaElement>(null);
   const activeMarkRef: RefObject<HTMLElement | null> = useRef<HTMLElement>(null);
   const previousScope: RefObject<string> = useRef<string>("");
   const previousDocument: RefObject<string> = useRef<string>("");
+  const savedTimerRef: RefObject<number | undefined> = useRef<number | undefined>(undefined);
+  const dirtyRef: RefObject<boolean> = useRef<boolean>(false);
+  const editingRef: RefObject<boolean> = useRef<boolean>(false);
+  const savingRef: RefObject<boolean> = useRef<boolean>(false);
+  const previousBaseSourceRef: RefObject<string> = useRef<string>("");
   const positions: RefObject<Map<string, ScrollPosition>> = useRef<Map<string, ScrollPosition>>(
     new Map()
+  );
+
+  const baseSource: string = useMemo((): string => normalizeSource(body), [body]);
+  const originalEnding: LineEnding = useMemo(
+    (): LineEnding => detectLineEnding(body ?? ""),
+    [body]
+  );
+  const isDirty: boolean = isEditing && draft !== baseSource;
+  dirtyRef.current = isDirty;
+  editingRef.current = isEditing;
+  savingRef.current = saving;
+
+  useEffect((): void => {
+    const previousBase: string = previousBaseSourceRef.current;
+    previousBaseSourceRef.current = baseSource;
+    if (isEditing && draft === previousBase && draft !== baseSource) {
+      setDraft(baseSource);
+    }
+  }, [baseSource, draft, isEditing]);
+
+  const source: string = isEditing ? draft : baseSource;
+
+  useEffect(
+    (): (() => void) => (): void => {
+      if (savedTimerRef.current !== undefined) {
+        window.clearTimeout(savedTimerRef.current);
+      }
+    },
+    []
   );
 
   useLayoutEffect((): void => {
@@ -128,11 +191,11 @@ export function useEditorController(onAllTabsClosed?: () => void): {
   useEffect((): (() => void) | undefined => {
     if (!workspace || !threadId || !path) return;
     return subscribeWorkspaceChanges(workspace, (): void => {
+      if (dirtyRef.current || savingRef.current) return;
       void previewFile({ threadId, workspace, path });
     });
   }, [workspace, threadId, path, previewFile]);
 
-  const source: string = useMemo((): string => normalizeSource(body), [body]);
   const highlighted: HighlightedDocument | null = useMemo(
     (): HighlightedDocument | null => highlightSource(source, path),
     [source, path]
@@ -159,8 +222,12 @@ export function useEditorController(onAllTabsClosed?: () => void): {
       previousDocument.current = positionKey;
       setFindOpen(false);
       setMatchIndex(0);
+      setIsEditing(false);
+      setDraft("");
+      setSaveError("");
+      setSavedNotice(false);
     }
-    if (!viewportRef.current || !path || body === undefined) return;
+    if (!viewportRef.current || !path || body === undefined || editingRef.current) return;
     const scroll: HTMLDivElement = viewportRef.current;
     if (targetLine) {
       scroll.scrollTop = Math.max(0, (targetLine - 1) * EDITOR_LINE_HEIGHT - scroll.clientHeight / 2);
@@ -232,6 +299,8 @@ export function useEditorController(onAllTabsClosed?: () => void): {
       closed
     );
     if (closingActive) {
+      setIsEditing(false);
+      setSaveError("");
       if (next) void previewFile({ threadId, workspace, path: next });
       else {
         closeFilePreview();
@@ -245,7 +314,66 @@ export function useEditorController(onAllTabsClosed?: () => void): {
 
   function reloadCurrent(): void {
     if (threadId && workspace && path) {
+      setSaveError("");
+      setIsEditing(false);
       void previewFile({ threadId, workspace, path });
+    }
+  }
+
+  function toggleEdit(): void {
+    if (body === undefined) return;
+    setSaveError("");
+    if (isEditing) {
+      setIsEditing(false);
+      setDraft(baseSource);
+      return;
+    }
+    setDraft(baseSource);
+    setIsEditing(true);
+    requestAnimationFrame((): void => {
+      textareaRef.current?.focus({ preventScroll: true });
+    });
+  }
+
+  function updateDraft(value: string): void {
+    setDraft(value);
+    setSaveError("");
+    setSavedNotice(false);
+  }
+
+  function discardChanges(): void {
+    setDraft(baseSource);
+    setSaveError("");
+    setSavedNotice(false);
+  }
+
+  async function saveCurrent(): Promise<void> {
+    if (!workspace || !path || !isEditing || saving || !isDirty) return;
+    const restoredContent: string = restoreLineEndings(draft, originalEnding);
+    savingRef.current = true;
+    setSaving(true);
+    setSaveError("");
+    try {
+      await replaceFileContent({
+        workspace,
+        path,
+        content: restoredContent,
+        expectedBefore: body,
+      });
+      updatePreviewBody(path, restoredContent);
+      setSavedNotice(true);
+      if (savedTimerRef.current !== undefined) {
+        window.clearTimeout(savedTimerRef.current);
+      }
+      savedTimerRef.current = window.setTimeout((): void => {
+        setSavedNotice(false);
+      }, 1800);
+    } catch (failure: unknown) {
+      logError(failure, undefined, ERROR_CODES.WORKSPACE_WRITE_INVALID);
+      setSaveError(serializeErrorCode(failure, ERROR_CODES.WORKSPACE_WRITE_INVALID));
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
     }
   }
 
@@ -263,6 +391,11 @@ export function useEditorController(onAllTabsClosed?: () => void): {
       return;
     }
     if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey) {
+      if (key === "s" && isEditing) {
+        event.preventDefault();
+        void saveCurrent();
+        return;
+      }
       if (key === "f" && body !== undefined) {
         event.preventDefault();
         openFind();
@@ -291,6 +424,28 @@ export function useEditorController(onAllTabsClosed?: () => void): {
     openTab(paths[next], true);
   }
 
+  function handleTextareaKeyDown(event: KeyboardEvent<HTMLTextAreaElement>): void {
+    if (event.nativeEvent.isComposing) return;
+    if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "s") {
+      event.preventDefault();
+      void saveCurrent();
+      return;
+    }
+    if (event.key === "Tab" && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      event.preventDefault();
+      const target: HTMLTextAreaElement = event.currentTarget;
+      const start: number = target.selectionStart;
+      const end: number = target.selectionEnd;
+      const nextValue: string =
+        draft.slice(0, start) + FILE_EDIT_TAB_SPACES + draft.slice(end);
+      updateDraft(nextValue);
+      const nextCaret: number = start + FILE_EDIT_TAB_SPACES.length;
+      requestAnimationFrame((): void => {
+        target.setSelectionRange(nextCaret, nextCaret);
+      });
+    }
+  }
+
   return {
     workspace,
     preview,
@@ -301,6 +456,11 @@ export function useEditorController(onAllTabsClosed?: () => void): {
     findOpen,
     query,
     matchIndex,
+    isEditing,
+    isDirty,
+    saving,
+    savedNotice,
+    saveError,
     source,
     highlighted,
     detectedLabel,
@@ -311,6 +471,7 @@ export function useEditorController(onAllTabsClosed?: () => void): {
     findInputRef,
     sectionRef,
     viewportRef,
+    textareaRef,
     activeMarkRef,
     openFolder,
     openFind,
@@ -320,7 +481,12 @@ export function useEditorController(onAllTabsClosed?: () => void): {
     openTab,
     closeTab,
     reloadCurrent,
+    toggleEdit,
+    updateDraft,
+    saveCurrent,
+    discardChanges,
     saveScrollPosition,
     handleKeyDown,
+    handleTextareaKeyDown,
   };
 }
