@@ -8,8 +8,8 @@ import { setTimeout as delay } from "node:timers/promises";
 import { test } from "node:test";
 import { checkName, runCheck } from "./check.ts";
 import { connectEndpoint, endpointUrl, loadState, readEndpoint, saveStateSync, serve } from "./host.ts";
-import { exportThreads, importThreads } from "../src/model/localData.ts";
-import type { Thread } from "../src/model/types.ts";
+import { exportThreads, importThreads } from "../src/agent-core/localData.ts";
+import type { Thread } from "../src/agent-core/types.ts";
 import {
   bindWorkspace, exportWorkspaceDocument, listWorkspace, readWorkspaceFile, readWorkspaceFileIfExists,
   searchWorkspaceFiles, searchWorkspaceText, splitWorkspacePath, writeWorkspaceFile,
@@ -88,8 +88,8 @@ test("competing sidecars elect one host and recover after abrupt exit", () => fi
   const script = [
     `import {serve} from ${JSON.stringify(runtimeFile)};`,
     "const runtime = {getState:()=>({owner:process.pid}),action:()=>null,shutdown(){}};",
-    'const host = await serve({runtime});',
-    'console.log(JSON.stringify({pid:process.pid,host:host.endpoint.pid,reused:host.reused}));',
+    "const host = await serve({runtime});",
+    "console.log(JSON.stringify({pid:process.pid,host:host.endpoint.pid,reused:host.reused}));",
   ].join("\n");
   const children = new Set<ReturnType<typeof spawn>>();
   function spawnHost() {
@@ -118,7 +118,11 @@ test("competing sidecars elect one host and recover after abrupt exit", () => fi
   try {
     const contenderA = spawnHost();
     const contenderB = spawnHost();
-    const [first, second] = await Promise.all([contenderA.info, contenderB.info]);
+    const settled = await Promise.allSettled([contenderA.info, contenderB.info]);
+    const [first, second] = settled.map((entry) => {
+      if (entry.status !== "fulfilled") throw entry.reason;
+      return entry.value;
+    });
     assert.equal(first.host, second.host);
     assert.equal([first, second].filter(({ reused }) => !reused).length, 1);
     const firstOwner = first.reused ? contenderB.child : contenderA.child;
@@ -140,7 +144,7 @@ test("competing sidecars elect one host and recover after abrupt exit", () => fi
     await stopped;
     assert.equal(await readEndpoint(), undefined);
   } finally {
-    await Promise.all([...children].map(async (child) => {
+    await Promise.allSettled([...children].map(async (child) => {
       if (child.exitCode !== null || child.signalCode !== null) return;
       const exited = once(child, "exit");
       child.kill("SIGKILL");
@@ -162,19 +166,19 @@ test("native workspaces preserve exact bytes and reject path escape and stale wr
   assert.deepEqual((await listWorkspace(workspace)).map(({ path }) => path), ["win.md"]);
   assert.equal(await readWorkspaceFile(workspace, "win.md"), "\ufeff首行\r\n内容\r\n");
   assert.equal(await readWorkspaceFileIfExists(workspace, "new/nested.md", { allowMissingParent: true }), null);
-  await writeWorkspaceFile(workspace, "new/nested.md", "在目录内创建", null);
+  await writeWorkspaceFile(workspace, { path: "new/nested.md", after: "在目录内创建", expectedBefore: null });
   assert.equal(await readFile(join(root, "new", "nested.md"), "utf8"), "在目录内创建");
-  await assert.rejects(() => writeWorkspaceFile(workspace, "win.md", "bad", "stale"), /文件已变化/u);
+  await assert.rejects(() => writeWorkspaceFile(workspace, { path: "win.md", after: "bad", expectedBefore: "stale" }), /WORKSPACE_FILE_CHANGED/u);
   assert.equal(await readFile(join(root, "win.md"), "utf8"), "\ufeff首行\r\n内容\r\n");
   const concurrent = await Promise.allSettled([
-    writeWorkspaceFile(workspace, "win.md", "one", "\ufeff首行\r\n内容\r\n"),
-    writeWorkspaceFile(workspace, "win.md", "two", "\ufeff首行\r\n内容\r\n"),
+    writeWorkspaceFile(workspace, { path: "win.md", after: "one", expectedBefore: "\ufeff首行\r\n内容\r\n" }),
+    writeWorkspaceFile(workspace, { path: "win.md", after: "two", expectedBefore: "\ufeff首行\r\n内容\r\n" }),
   ]);
   assert.deepEqual(concurrent.map(({ status }) => status), ["fulfilled", "rejected"]);
-  await assert.rejects(() => readWorkspaceFile(workspace, "shortcut/private.txt"), /目录链接/u);
-  await assert.rejects(() => writeWorkspaceFile(workspace, "shortcut/private.txt", "bad", "must never be touched"), /目录链接/u);
-  for (const value of ["../private.txt", "/private.txt", "C:/private.txt", "x:file", "NUL", "qa/CONIN\$.txt", "one\\two"]) {
-    assert.throws(() => splitWorkspacePath(value), /工作区/u);
+  await assert.rejects(() => readWorkspaceFile(workspace, "shortcut/private.txt"), /WORKSPACE_SYMLINK_FORBIDDEN/u);
+  await assert.rejects(() => writeWorkspaceFile(workspace, { path: "shortcut/private.txt", after: "bad", expectedBefore: "must never be touched" }), /WORKSPACE_SYMLINK_FORBIDDEN/u);
+  for (const value of ["../private.txt", "/private.txt", "C:/private.txt", "x:file", "NUL", "qa/CONIN$.txt", "one\\two"]) {
+    assert.throws(() => splitWorkspacePath(value), /WORKSPACE_INVALID_PATH/u);
   }
   assert.equal(await readFile(join(outside, "private.txt"), "utf8"), "must never be touched");
   assert.equal((await searchWorkspaceFiles(workspace, "nested")).at(0)?.path, "new/nested.md");
@@ -238,7 +242,7 @@ test("CLI executes only the allowed package checks in the bound folder", () => f
     },
   }));
   await writeFile(join(work, "fixture.cjs"), [
-    'const cmd = process.argv[2];',
+    "const cmd = process.argv[2];",
     'if (cmd === "test") { console.log("测试输出"); console.error("测试错误"); process.exitCode = 7; }',
     'else console.log("CHECK:" + cmd);',
     'console.log("ROOT:" + process.cwd());',
@@ -259,12 +263,12 @@ test("CLI executes only the allowed package checks in the bound folder", () => f
   assert.equal(built.command, "npm run build");
   assert.equal(built.exitCode, 0);
   assert.match(built.output, /CHECK:build/u);
-  assert.throws(() => checkName("npm test; other"), /只允许/u);
-  assert.throws(() => checkName("npm run build --prefix .."), /只允许/u);
-  await assert.rejects(() => runCheck(workspace, "build", { cwd: directory }), /位于工作区/u);
+  assert.throws(() => checkName("npm test; other"), /CHECK_COMMAND_UNSUPPORTED/u);
+  assert.throws(() => checkName("npm run build --prefix .."), /CHECK_COMMAND_UNSUPPORTED/u);
+  await assert.rejects(() => runCheck(workspace, "build", { cwd: directory }), /CHECK_DIR_OUTSIDE_WORKSPACE/u);
   await mkdir(join(work, "empty"));
   const nested = await bindWorkspace(join(work, "empty"));
-  await assert.rejects(() => runCheck(nested, "test"), /没有自己的 package/u);
+  await assert.rejects(() => runCheck(nested, "test"), /CHECK_MANIFEST_MISSING/u);
 
   await writeFile(join(work, "package.json"), JSON.stringify({ scripts: { test: "node linger.cjs" } }));
   await writeFile(join(work, "linger.cjs"), [

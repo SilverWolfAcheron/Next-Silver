@@ -1,24 +1,27 @@
-import type { ModelClient } from "../src/provider/client";
-import { applyDiff, parseDiff } from "../src/model/diff";
-import { getPreset } from "../src/model/presets";
-import { isValidAudit } from "../src/model/seats";
-import { askModel, conversationPrompt, modelRecord, modelString, readArtifacts, SessionError } from "../src/model/session";
-import type { AgentSeat, Artifact, AuditVerdict, Run, Thread } from "../src/model/types";
-import { readWorkspaceFileIfExists, workspaceErrorText } from "./workspace";
+import type { ModelClient } from "../src/agent-core/provider/client";
+import { applyDiff, parseDiff } from "../src/agent-core/diff";
+import type { DiffFile } from "../src/agent-core/diff";
+import { AppError, ERROR_CODES, extractErrorCode } from "../src/agent-core/errors";
+import { getPreset } from "../src/agent-core/presets";
+import { isValidAudit } from "../src/agent-core/seats";
+import { askModel, conversationPrompt, modelRecord, modelString, readArtifacts, SessionError } from "../src/agent-core/session";
+import type { ModelMessage } from "../src/agent-core/session";
+import type { AgentSeat, Artifact, AuditVerdict, Iteration, Requirement, Run, Thread, WritePolicy } from "../src/agent-core/types";
+import { readWorkspaceFileIfExists } from "./workspace";
 import { attachmentContext, toolContext } from "./workspaceContext";
 import { iterationContext } from "./iterations";
 
-const MAX_TOOLS_PER_ROUND = 4;
-const MAX_FINDINGS = 20;
-const MAX_ARTIFACTS = 20;
-const MAX_SUMMARY = 6_000;
-const MAX_FINDING = 2_000;
-const MAX_AUDIT_PATCH_CONTEXT = 24_000;
+const MAX_TOOLS_PER_ROUND: number = 4;
+const MAX_FINDINGS: number = 20;
+const MAX_ARTIFACTS: number = 20;
+const MAX_SUMMARY: number = 6_000;
+const MAX_FINDING: number = 2_000;
+const MAX_AUDIT_PATCH_CONTEXT: number = 24_000;
 
-const DEVELOP_RESPONSE = '{"status":"completed|blocked","summary":"工作摘要","findings":["具体发现"],"artifacts":[{"kind":"diff","title":"标题","body":"unified diff"}],"note":"阻塞原因（有时填写）"}';
-const AUDIT_RESPONSE = '{"summary":"审计摘要","decisions":[{"index":0,"verdict":"refuted|retained","reason":"独立证据、反例或核验理由"}]}';
+const DEVELOP_RESPONSE: string = '{"status":"completed|blocked","summary":"工作摘要","findings":["具体发现"],"artifacts":[{"kind":"diff","title":"标题","body":"unified diff"}],"note":"阻塞原因（有时填写）"}';
+const AUDIT_RESPONSE: string = '{"summary":"审计摘要","decisions":[{"index":0,"verdict":"refuted|retained","reason":"独立证据、反例或核验理由"}]}';
 
-interface SeatResult {
+export interface SeatResult {
   status: "completed" | "blocked";
   summary: string;
   note: string;
@@ -30,54 +33,54 @@ interface SeatResult {
 
 function readFindings(value: unknown): string[] {
   if (!Array.isArray(value) || value.length > MAX_FINDINGS) {
-    throw new SessionError("开发席位的发现列表无效，可以重试。");
+    throw new SessionError(ERROR_CODES.SEAT_FINDINGS_INVALID);
   }
-  return value.map((entry) => {
-    const text = modelString(entry);
+  return value.map((entry: unknown): string => {
+    const text: string = modelString(entry);
     if (!text || text.length > MAX_FINDING) {
-      throw new SessionError("开发席位的发现为空或过长，可以重试。");
+      throw new SessionError(ERROR_CODES.SEAT_FINDING_INVALID);
     }
     return text;
   });
 }
 
 function getAuditSubject(run: Run, seat: AgentSeat): AgentSeat {
-  const developer = run.seats?.find(({ id }) => id === seat.auditFor);
-  if (!developer || developer.role !== "develop" || !developer.findings.length
-      || (developer.status !== "completed" && developer.status !== "blocked")) {
-    throw new SessionError("没有可审计的开发发现。");
+  const developer: AgentSeat | undefined = run.seats?.find(({ id }: AgentSeat): boolean => id === seat.auditFor);
+  if (developer?.role !== "develop" || !developer.findings.length ||
+      (developer.status !== "completed" && developer.status !== "blocked")) {
+    throw new SessionError(ERROR_CODES.SEAT_NO_AUDIT_SUBJECT);
   }
   return developer;
 }
 
 function auditEvidence(developer: AgentSeat): string {
-  let remaining = MAX_AUDIT_PATCH_CONTEXT;
-  const drafts = (developer.drafts ?? []).flatMap(({ title, body }) => {
+  let remaining: number = MAX_AUDIT_PATCH_CONTEXT;
+  const drafts: { title: string; body: string; truncated: boolean; }[] = (developer.drafts ?? []).flatMap(({ title, body }: Artifact): { title: string; body: string; truncated: boolean; }[] => {
     if (!remaining) return [];
-    const excerpt = body.slice(0, remaining);
+    const excerpt: string = body.slice(0, remaining);
     remaining -= excerpt.length;
     return [{ title, body: excerpt, truncated: excerpt.length < body.length }];
   });
   return JSON.stringify({
     developer: developer.title,
-    findings: developer.findings.map((finding, index) => ({ index, finding })),
+    findings: developer.findings.map((finding: string, index: number): { index: number; finding: string; } => ({ index, finding })),
     drafts,
   });
 }
 
 function auditResult(reply: Record<string, unknown>, seat: AgentSeat, developer: AgentSeat): SeatResult {
-  if (!Array.isArray(reply.decisions) || reply.decisions.length !== developer.findings.length
-      || reply.artifacts !== undefined || reply.findings !== undefined) {
-    throw new SessionError("审计必须逐条反驳或保留发现，并提供独立理由。");
+  if (!Array.isArray(reply.decisions) || reply.decisions.length !== developer.findings.length ||
+      reply.artifacts !== undefined || reply.findings !== undefined) {
+    throw new SessionError(ERROR_CODES.SEAT_AUDIT_DECISIONS_INVALID);
   }
   const verdicts: AuditVerdict[] = [];
   const refutations: string[] = [];
   for (const [index, raw] of reply.decisions.entries()) {
-    const entry = modelRecord(raw);
-    const reason = modelString(entry.reason);
-    if (entry.index !== index || (entry.verdict !== "refuted" && entry.verdict !== "retained")
-        || !reason || reason.length > MAX_FINDING) {
-      throw new SessionError("审计结论缺少发现编号、有效判定或独立理由，可以重试。");
+    const entry: Record<string, unknown> = modelRecord(raw);
+    const reason: string = modelString(entry.reason);
+    if (entry.index !== index || (entry.verdict !== "refuted" && entry.verdict !== "retained") ||
+        !reason || reason.length > MAX_FINDING) {
+      throw new SessionError(ERROR_CODES.SEAT_AUDIT_ITEM_INVALID);
     }
     verdicts.push(entry.verdict);
     refutations.push(reason);
@@ -91,45 +94,70 @@ function auditResult(reply: Record<string, unknown>, seat: AgentSeat, developer:
     verdicts,
   };
   if (!isValidAudit({ ...seat, ...result }, developer)) {
-    throw new SessionError("审计理由重复或只是复述开发发现，可以重试。");
+    throw new SessionError(ERROR_CODES.SEAT_AUDIT_REASONING_INVALID);
   }
   return result;
 }
 
-async function developDrafts(
-  value: unknown, thread: Thread, run: Run, seat: AgentSeat, signal: AbortSignal,
-): Promise<Artifact[]> {
+interface DevelopContext {
+  thread: Thread;
+  run: Run;
+  seat: AgentSeat;
+  signal: AbortSignal;
+}
+
+export interface RunSeatOptions {
+  thread: Thread;
+  run: Run;
+  seat: AgentSeat;
+  client: ModelClient;
+  request: { model: string; signal: AbortSignal };
+  onProgress: (note: string) => void;
+}
+
+async function developDrafts(value: unknown, context: DevelopContext): Promise<Artifact[]> {
+  const { thread, run, seat, signal }: DevelopContext = context;
   if (value === undefined) return [];
-  if (!Array.isArray(value) || value.length > MAX_ARTIFACTS
-      || value.some((raw) => {
-        const item = modelRecord(raw);
-        return item.kind !== "diff" || !modelString(item.title) || !modelString(item.body)
-          || (item.workspaceId !== undefined && item.workspaceId !== thread.workspace?.id);
+  if (!Array.isArray(value) || value.length > MAX_ARTIFACTS ||
+      value.some((raw: unknown): boolean => {
+        const item: Record<string, unknown> = modelRecord(raw);
+        return item.kind !== "diff" || !modelString(item.title) || !modelString(item.body) ||
+          (item.workspaceId !== undefined && item.workspaceId !== thread.workspace?.id);
       })) {
-    throw new SessionError("开发席位只能提交属于当前工作区的完整文本差异。");
+    throw new SessionError(ERROR_CODES.SEAT_DRAFTS_INVALID);
   }
-  const drafts = readArtifacts(value, thread, run.id);
-  const scope = new Set(seat.scope);
-  const changedPaths = new Set<string>();
+  const drafts: Artifact[] = readArtifacts(value, thread, run.id);
+  const scope: Set<string> = new Set(seat.scope);
+  const changedPaths: Set<string> = new Set();
   for (const draft of drafts) {
     for (const file of parseDiff(draft.body)) {
-      const { change } = file;
-      if (!change) throw new SessionError("差异含有无法验证的文件或差异块。");
-      if (!scope.has(change.path)) throw new SessionError(`差异超出席位范围：${change.path}`);
-      const key = change.path.normalize("NFC").toLowerCase();
-      if (changedPaths.has(key)) throw new SessionError(`差异中重复提交了文件：${change.path}`);
+      const { change }: DiffFile = file;
+      if (!change) throw new SessionError(ERROR_CODES.SEAT_DIFF_UNVERIFIABLE);
+      if (!scope.has(change.path)) {
+        throw new SessionError(ERROR_CODES.SEAT_SCOPE_EXCEEDED, { params: { path: change.path } });
+      }
+      const key: string = change.path.normalize("NFC").toLowerCase();
+      if (changedPaths.has(key)) {
+        throw new SessionError(ERROR_CODES.SEAT_DIFF_DUPLICATE_FILE, { params: { path: change.path } });
+      }
       changedPaths.add(key);
       signal.throwIfAborted();
       if (thread.workspace) {
         try {
-          const original = await readWorkspaceFileIfExists(thread.workspace, change.path, {
+          const original: string | null = await readWorkspaceFileIfExists(thread.workspace, change.path, {
             allowMissingParent: change.operation === "create",
           });
           signal.throwIfAborted();
           applyDiff(change, original);
         } catch (error) {
           signal.throwIfAborted();
-          throw new SessionError(`无法核对差异 ${change.path}。 ${workspaceErrorText(error)}`);
+          throw new SessionError(ERROR_CODES.SEAT_DIFF_VERIFY_FAILED, {
+            params: {
+              path: change.path,
+              detailCode: extractErrorCode(error, ERROR_CODES.WORKSPACE_ACCESS_FAILED).code,
+            },
+            cause: error,
+          });
         }
       }
     }
@@ -138,17 +166,19 @@ async function developDrafts(
 }
 
 async function developResult(
-  reply: Record<string, unknown>, thread: Thread, run: Run, seat: AgentSeat, signal: AbortSignal,
+  reply: Record<string, unknown>,
+  context: DevelopContext
 ): Promise<SeatResult> {
+  const { signal }: DevelopContext = context;
   if (reply.status !== "completed" && reply.status !== "blocked") {
-    throw new SessionError("开发席位回复缺少有效状态，可以重试。");
+    throw new SessionError(ERROR_CODES.SEAT_STATUS_INVALID);
   }
-  const summary = modelString(reply.summary).slice(0, MAX_SUMMARY);
-  if (!summary) throw new SessionError("开发席位回复缺少工作摘要，可以重试。");
-  const findings = readFindings(reply.findings);
-  const base = { summary, findings, refutations: [] };
+  const summary: string = modelString(reply.summary).slice(0, MAX_SUMMARY);
+  if (!summary) throw new SessionError(ERROR_CODES.SEAT_SUMMARY_MISSING);
+  const findings: string[] = readFindings(reply.findings);
+  const base: { summary: string; findings: string[]; refutations: never[]; } = { summary, findings, refutations: [] };
   try {
-    const drafts = await developDrafts(reply.artifacts, thread, run, seat, signal);
+    const drafts: Artifact[] = await developDrafts(reply.artifacts, context);
     return {
       ...base,
       status: reply.status,
@@ -162,27 +192,21 @@ async function developResult(
   }
 }
 
-export async function runSeat(
-  thread: Thread,
-  run: Run,
-  seat: AgentSeat,
-  client: ModelClient,
-  request: { model: string; signal: AbortSignal },
-  onProgress: (note: string) => void,
-): Promise<SeatResult> {
+export async function runSeat(options: RunSeatOptions): Promise<SeatResult> {
+  const { thread, run, seat, client, request, onProgress }: RunSeatOptions = options;
   request.signal.throwIfAborted();
-  const policy = getPreset(thread.presetId).writePolicy;
+  const policy: WritePolicy = getPreset(thread.presetId).writePolicy;
   if (thread.mode !== "project" || policy !== "code") {
-    throw new SessionError("当前预设未启用开发与审计席位。");
+    throw new SessionError(ERROR_CODES.SEAT_NOT_ENABLED);
   }
-  const developer = seat.role === "audit" ? getAuditSubject(run, seat) : undefined;
-  const requirements = thread.brief?.requirements.filter(({ id }) => run.dependsOn.includes(id));
-  const children = (run.seats ?? []).filter(({ role, parentId, summary }) =>
-    role === "develop" && parentId === seat.id && summary,
-  ).map(({ title, summary }) => ({ title, summary }));
-  const requestSchema = developer ? AUDIT_RESPONSE : DEVELOP_RESPONSE;
-  const iteration = run.iterations?.at(-1);
-  const prompt = conversationPrompt(thread, [
+  const developer: AgentSeat | undefined = seat.role === "audit" ? getAuditSubject(run, seat) : undefined;
+  const requirements: Requirement[] | undefined = thread.brief?.requirements.filter(({ id }: Requirement): boolean => run.dependsOn.includes(id));
+  const children: { title: string; summary: string; }[] = (run.seats ?? []).filter(({ role, parentId, summary }: AgentSeat): string | false =>
+    role === "develop" && parentId === seat.id && summary
+  ).map(({ title, summary }: AgentSeat): { title: string; summary: string; } => ({ title, summary }));
+  const requestSchema: string = developer ? AUDIT_RESPONSE : DEVELOP_RESPONSE;
+  const iteration: Iteration | undefined = run.iterations?.at(-1);
+  const prompt: ModelMessage[] = conversationPrompt(thread, [
     `角色：${developer ? "审计席位" : "开发席位"}`,
     `席位 ID：${seat.id}。席位标题：${seat.title}`,
     `父工作项：${run.title}。相关需求：${JSON.stringify(requirements ?? [])}`,
@@ -204,27 +228,31 @@ export async function runSeat(
     prompt.push(...await attachmentContext(thread, run.messageId));
   } catch (error) {
     request.signal.throwIfAborted();
-    throw new SessionError(error instanceof Error ? error.message : "无法读取工作区附件。");
+    if (error instanceof AppError) {
+      throw new SessionError(error.code, { params: error.params, cause: error });
+    }
+    throw new SessionError(ERROR_CODES.WORKSPACE_ATTACHMENTS_READ_FAILED, { cause: error });
   }
 
   onProgress(developer ? "正在核对开发发现…" : "正在处理席位范围…");
   const reads: string[] = [];
   for (;;) {
     request.signal.throwIfAborted();
-    const reply = modelRecord(await askModel(client, request, prompt));
+    const reply: Record<string, unknown> = modelRecord(await askModel(client, request, prompt));
     request.signal.throwIfAborted();
     if (!Array.isArray(reply.tools) || !reply.tools.length) {
-      const result = developer
-        ? auditResult(reply, seat, developer) : await developResult(reply, thread, run, seat, request.signal);
+      const result: SeatResult = developer
+        ? auditResult(reply, seat, developer)
+        : await developResult(reply, { thread, run, seat, signal: request.signal });
       if (reads.length) result.summary = [result.summary, "工作区读取记录", ...reads].filter(Boolean).join("\n");
       return result;
     }
-    if (reply.tools.length > MAX_TOOLS_PER_ROUND) throw new SessionError("单次工具请求最多包含四项。");
+    if (reply.tools.length > MAX_TOOLS_PER_ROUND) throw new SessionError(ERROR_CODES.SESSION_TOOL_LIMIT_EXCEEDED);
     onProgress(developer ? "正在读取审计依据…" : "正在读取工作区…");
-    reads.push(...reply.tools.map((raw) => {
-      const tool = modelRecord(raw);
-      const operation = modelString(tool.name);
-      const target = modelString(tool.path) || modelString(tool.query) || "工作区根目录";
+    reads.push(...reply.tools.map((raw: unknown): string => {
+      const tool: Record<string, unknown> = modelRecord(raw);
+      const operation: string = modelString(tool.name);
+      const target: string = modelString(tool.path) || modelString(tool.query) || "工作区根目录";
       return `${operation.slice(0, 40)} ${target.slice(0, 160)}`;
     }));
     prompt.push({ role: "assistant", content: JSON.stringify({ tools: reply.tools }) });

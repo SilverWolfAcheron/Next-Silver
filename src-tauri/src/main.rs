@@ -11,10 +11,10 @@ use tauri::{
 };
 use tauri_plugin_dialog::DialogExt;
 
-const LIGHT_BG: [u8; 3] = [0xf6, 0xef, 0xe2];
+const LIGHT_BG: [u8; 3] = [0xef, 0xe6, 0xd5];
 const LIGHT_FG: [u8; 3] = [0x2c, 0x24, 0x1b];
 const LIGHT_BORDER: [u8; 3] = [0xd9, 0xcc, 0xb4];
-const DARK_BG: [u8; 3] = [0x2c, 0x26, 0x1f];
+const DARK_BG: [u8; 3] = [0x24, 0x1f, 0x19];
 const DARK_FG: [u8; 3] = [0xf3, 0xea, 0xd8];
 const DARK_BORDER: [u8; 3] = [0x44, 0x3b, 0x2f];
 
@@ -121,15 +121,15 @@ async fn choose_workspace(app: AppHandle) -> Result<Option<String>, String> {
         });
     let selection = receive
         .await
-        .map_err(|_| "无法打开文件夹选择窗口。".to_owned())?;
+        .map_err(|_| "DESKTOP_DIALOG_OPEN_FAILED".to_owned())?;
     selection
         .map(|folder| {
             folder
                 .into_path()
-                .map_err(|_| "仅支持本机工作区文件夹。".to_owned())?
+                .map_err(|_| "DESKTOP_DIALOG_LOCAL_ONLY".to_owned())?
                 .into_os_string()
                 .into_string()
-                .map_err(|_| "所选文件夹路径无法读取。".to_owned())
+                .map_err(|_| "DESKTOP_DIALOG_PATH_UNREADABLE".to_owned())
         })
         .transpose()
 }

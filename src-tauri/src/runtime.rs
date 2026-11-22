@@ -51,7 +51,7 @@ impl DesktopRuntime {
         let directory = env::var_os("SILVER_DATA_DIR")
             .map(PathBuf::from)
             .or_else(|| env::var_os("APPDATA").map(|path| PathBuf::from(path).join("Silver")))
-            .ok_or("无法确定 Silver 应用数据目录。")?;
+            .ok_or("DESKTOP_DATA_DIR_UNAVAILABLE")?;
         let client = Client::builder()
             .redirect(reqwest::redirect::Policy::none())
             .no_proxy()
@@ -98,7 +98,7 @@ impl DesktopRuntime {
 
     async fn ensure_endpoint(&self, app: &AppHandle) -> Result<Endpoint, String> {
         if self.is_quitting() {
-            return Err("Silver 正在退出。".into());
+            return Err("DESKTOP_EXITING".into());
         }
         let mut cached = self.endpoint.lock().await;
         if let Some(endpoint) = cached.as_ref() {
@@ -111,11 +111,11 @@ impl DesktopRuntime {
             }
         }
         if self.is_quitting() {
-            return Err("Silver 正在退出。".into());
+            return Err("DESKTOP_EXITING".into());
         }
         tokio::fs::create_dir_all(&self.directory)
             .await
-            .map_err(|err| format!("无法创建 Silver 应用数据目录：{err}"))?;
+            .map_err(|_| "DESKTOP_DATA_DIR_CREATE_FAILED".to_owned())?;
         let mut child = spawn_runtime(app, &self.directory)?;
         let deadline = Instant::now() + STARTUP_TIMEOUT;
         let mut exit_message = None;
@@ -127,14 +127,14 @@ impl DesktopRuntime {
                 }
             }
             if exit_message.is_none() {
-                if let Ok(Some(status)) = child.try_wait() {
+                if let Ok(Some(_status)) = child.try_wait() {
                     // Another shell can start the service while this process is losing its lock.
-                    exit_message = Some(format!("本机 Silver 运行时未能启动（{status}）。"));
+                    exit_message = Some("DESKTOP_RUNTIME_START_FAILED".to_owned());
                 }
             }
             tokio::time::sleep(STARTUP_RETRY).await;
         }
-        Err(exit_message.unwrap_or_else(|| "等待本机 Silver 运行时启动超时。".into()))
+        Err(exit_message.unwrap_or_else(|| "DESKTOP_RUNTIME_START_TIMEOUT".into()))
     }
 
     async fn forget_endpoint(&self, endpoint: &Endpoint) {
@@ -180,7 +180,7 @@ impl DesktopRuntime {
 
     pub async fn shutdown(&self) -> Result<(), String> {
         if self.quitting.swap(true, Ordering::AcqRel) {
-            return Err("Silver 正在退出。".into());
+            return Err("DESKTOP_EXITING".into());
         }
         let endpoint = {
             let cached = self.endpoint.lock().await;
@@ -205,7 +205,7 @@ impl DesktopRuntime {
             {
                 if Instant::now() >= deadline {
                     self.quitting.store(false, Ordering::Release);
-                    return Err("本机运行时仍在保存，请稍后重试。".into());
+                    return Err("DESKTOP_SHUTDOWN_BUSY".into());
                 }
                 tokio::time::sleep(STARTUP_RETRY).await;
             }
@@ -215,7 +215,7 @@ impl DesktopRuntime {
             return Ok(());
         }
         self.quitting.store(false, Ordering::Release);
-        Err("本机运行时仍在运行，无法确认退出。请稍后重试。".into())
+        Err("DESKTOP_SHUTDOWN_UNCONFIRMED".into())
     }
 }
 
@@ -223,7 +223,7 @@ fn spawn_runtime(app: &AppHandle, directory: &Path) -> Result<std::process::Chil
     let resources = app
         .path()
         .resolve("desktop-runtime", BaseDirectory::Resource)
-        .map_err(|err| format!("无法定位 Silver 运行时：{err}"))?;
+        .map_err(|_| "DESKTOP_RUNTIME_LOCATE_FAILED".to_owned())?;
     let (node, entry, npm) = if cfg!(debug_assertions) {
         let project = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
         let path = env::var_os("SILVER_NODE").map(PathBuf::from);
@@ -253,13 +253,13 @@ fn spawn_runtime(app: &AppHandle, directory: &Path) -> Result<std::process::Chil
         )
     };
     if !entry.is_file() {
-        return Err(format!("缺少 Silver CLI 程序文件：{}", entry.display()));
+        return Err("DESKTOP_RUNTIME_ENTRY_MISSING".into());
     }
     let log = fs::OpenOptions::new()
         .create(true)
         .append(true)
         .open(directory.join("runtime-error.log"))
-        .map_err(|err| format!("无法打开运行时日志：{err}"))?;
+        .map_err(|_| "DESKTOP_RUNTIME_LOG_OPEN_FAILED".to_owned())?;
     // Tauri resource paths may use the Windows verbatim namespace. Node's CLI
     // entrypoint resolution expects a normal DOS path when one is available.
     let node = dunce::simplified(&node);
@@ -295,7 +295,7 @@ fn spawn_runtime(app: &AppHandle, directory: &Path) -> Result<std::process::Chil
     }
     command
         .spawn()
-        .map_err(|err| format!("无法运行 Silver CLI：{err}"))
+        .map_err(|_| "DESKTOP_RUNTIME_SPAWN_FAILED".to_owned())
 }
 
 async fn receive_events(mut response: reqwest::Response, app: &AppHandle) {
@@ -341,7 +341,7 @@ pub async fn desktop_request(
     let method = match (method.as_str(), path.as_str()) {
         ("GET", "/state") => reqwest::Method::GET,
         ("POST", "/action") => reqwest::Method::POST,
-        _ => return Err("此 Silver 桌面请求不受支持。".into()),
+        _ => return Err("DESKTOP_REQUEST_UNSUPPORTED".into()),
     };
     let endpoint = runtime.ensure_endpoint(&app).await?;
     let mut request = runtime
@@ -361,15 +361,19 @@ pub async fn desktop_request(
             let body = response
                 .json::<Value>()
                 .await
-                .map_err(|_| "本机 Silver 运行时返回了无效的数据。".to_owned())?;
+                .map_err(|_| "DESKTOP_RESPONSE_INVALID".to_owned())?;
             Ok(DesktopResponse {
                 status: status.as_u16(),
                 body,
             })
         }
-        Err(_) => {
+        Err(err) => {
             runtime.forget_endpoint(&endpoint).await;
-            Err("与本机 Silver 运行时的连接中断。".into())
+            if err.is_timeout() {
+                Err("API_TIMEOUT".into())
+            } else {
+                Err("DESKTOP_CONNECTION_LOST".into())
+            }
         }
     }
 }

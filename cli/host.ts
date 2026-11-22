@@ -2,18 +2,25 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import {
   closeSync, fsyncSync, mkdirSync, openSync, renameSync, rmSync, writeFileSync,
 } from "node:fs";
+import type { Stats } from "node:fs";
 import { open, readFile, stat, unlink } from "node:fs/promises";
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import type { FileHandle } from "node:fs/promises";
+import { createServer } from "node:http";
+import type { IncomingMessage, Server as HttpServer, ServerResponse } from "node:http";
 import { createServer as createPipe } from "node:net";
+import type { AddressInfo, Server as PipeServer, Socket } from "node:net";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { AppError, encodeErrorCode, ERROR_CODES, extractErrorCode } from "../src/agent-core/errors.ts";
+import { logError } from "../src/i18n/errors.ts";
+import type { ErrorCode, ParsedErrorCode } from "../src/types/errors.ts";
 
-const LOOPBACK = "127.0.0.1";
-const ENDPOINT_FILE = "endpoint.json";
-const STATE_FILE = "sessions.json";
-const LOCK_FILE = "host.lock";
-const MAX_BODY_BYTES = 32 * 1024 * 1024;
+const LOOPBACK: string = "127.0.0.1";
+const ENDPOINT_FILE: string = "endpoint.json";
+const STATE_FILE: string = "sessions.json";
+const LOCK_FILE: string = "host.lock";
+const MAX_BODY_BYTES: number = 32 * 1024 * 1024;
 
 export interface Endpoint {
   port: number;
@@ -23,7 +30,7 @@ export interface Endpoint {
 
 interface Runtime {
   getState(): unknown;
-  action(name: string, args: unknown[]): unknown | Promise<unknown>;
+  action(name: string, args: unknown[]): unknown;
   shutdown(): void | Promise<void>;
   subscribe?(listener: (state: unknown) => void): () => void;
 }
@@ -36,7 +43,7 @@ export interface RunningHost {
 }
 
 export function appDataDir(): string {
-  const override = process.env.SILVER_DATA_DIR;
+  const override: string | undefined = process.env.SILVER_DATA_DIR;
   if (override) return resolve(override);
   if (process.platform === "win32") {
     return join(process.env.APPDATA || join(homedir(), "AppData", "Roaming"), "Silver");
@@ -58,11 +65,11 @@ async function readJson(path: string): Promise<unknown> {
   }
 }
 
-export function writePrivateJson(path: string, value: unknown) {
+export function writePrivateJson(path: string, value: unknown): void {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-  const temporary = `${path}.${process.pid}.${randomBytes(8).toString("hex")}.tmp`;
+  const temporary: string = `${path}.${process.pid}.${randomBytes(8).toString("hex")}.tmp`;
   try {
-    const fd = openSync(temporary, "wx", 0o600);
+    const fd: number = openSync(temporary, "wx", 0o600);
     try {
       writeFileSync(fd, JSON.stringify(value) + "\n", "utf8");
       fsyncSync(fd);
@@ -75,7 +82,7 @@ export function writePrivateJson(path: string, value: unknown) {
   }
 }
 
-export async function loadState<T = unknown>(dataDir = appDataDir()): Promise<T | undefined> {
+export async function loadState<T = unknown>(dataDir: string = appDataDir()): Promise<T | undefined> {
   return await readJson(join(dataDir, STATE_FILE)) as T | undefined;
 }
 
@@ -84,14 +91,15 @@ export function saveStateSync(dataDir: string, value: unknown): void {
   writePrivateJson(join(dataDir, STATE_FILE), value);
 }
 
-export async function saveState(dataDir: string, value: unknown): Promise<void> {
+export function saveState(dataDir: string, value: unknown): Promise<void> {
   saveStateSync(dataDir, value);
+  return Promise.resolve();
 }
 
-export async function readEndpoint(dataDir = appDataDir()): Promise<Endpoint | undefined> {
-  const value = await readJson(join(dataDir, ENDPOINT_FILE)).catch(() => undefined);
+export async function readEndpoint(dataDir: string = appDataDir()): Promise<Endpoint | undefined> {
+  const value: unknown = await readJson(join(dataDir, ENDPOINT_FILE)).catch((): undefined => undefined);
   if (typeof value !== "object" || value === null) return;
-  const { port, token, pid } = value as Partial<Endpoint>;
+  const { port, token, pid }: Partial<Endpoint> = value as Partial<Endpoint>;
   if (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65_535 ||
     typeof token !== "string" || !/^[0-9a-f]{64}$/u.test(token) ||
     typeof pid !== "number" || !Number.isSafeInteger(pid) || pid < 1) return;
@@ -102,23 +110,23 @@ export function endpointUrl(endpoint: Endpoint): string {
   return `http://${LOOPBACK}:${endpoint.port}`;
 }
 
-export async function connectEndpoint(dataDir = appDataDir()): Promise<Endpoint | undefined> {
-  const endpoint = await readEndpoint(dataDir);
+export async function connectEndpoint(dataDir: string = appDataDir()): Promise<Endpoint | undefined> {
+  const endpoint: Endpoint | undefined = await readEndpoint(dataDir);
   if (!endpoint) return;
   try {
-    const response = await fetch(`${endpointUrl(endpoint)}/health`, {
+    const response: Response = await fetch(`${endpointUrl(endpoint)}/health`, {
       headers: { Authorization: `Bearer ${endpoint.token}` },
       signal: AbortSignal.timeout(600),
       redirect: "error",
     });
-    const health = response.ok ? await response.json() as { pid?: number } : undefined;
+    const health: { pid?: number; } | undefined = response.ok ? await response.json() as { pid?: number } : undefined;
     if (health?.pid === endpoint.pid) return endpoint;
   } catch {
     // A closed or incomplete host descriptor can be replaced by the next owner.
   }
 }
 
-function processExists(processId: number) {
+function processExists(processId: number): boolean {
   try {
     process.kill(processId, 0);
     return true;
@@ -132,106 +140,113 @@ type HostOwnership = { endpoint: Endpoint } | { release(): Promise<void> };
 async function acquireHost(dataDir: string): Promise<HostOwnership> {
   if (process.platform === "win32") {
     // Named-pipe ownership is released by Windows even if the sidecar is killed.
-    const id = createHash("sha256").update(resolve(dataDir).toLowerCase()).digest("hex");
-    const pipeName = `\\\\.\\pipe\\silver-cli-${id}`;
-    const deadline = Date.now() + 15_000;
+    const id: string = createHash("sha256").update(resolve(dataDir).toLowerCase()).digest("hex");
+    const pipeName: string = `\\\\.\\pipe\\silver-cli-${id}`;
+    const deadline: number = Date.now() + 15_000;
     while (Date.now() < deadline) {
-      const endpoint = await connectEndpoint(dataDir);
+      const endpoint: Endpoint | undefined = await connectEndpoint(dataDir);
       if (endpoint) return { endpoint };
-      const mutex = createPipe((socket) => { socket.destroy(); });
+      const mutex: PipeServer = createPipe((socket: Socket): void => { socket.destroy(); });
       try {
-        await new Promise<void>((done, reject) => {
+        await new Promise<void>((done: (value: void | PromiseLike<void>) => void, reject: (error: Error) => void): void => {
           mutex.once("error", reject);
-          mutex.listen(pipeName, () => {
+          mutex.listen(pipeName, (): void => {
             mutex.off("error", reject);
             done();
           });
         });
-        return { release: () => new Promise<void>((done) => mutex.close(() => done())) };
+        return {
+          release: (): Promise<void> => new Promise<void>((done: () => void): void => {
+            mutex.close((): void => done());
+          }),
+        };
       } catch (error) {
         if (errorCode(error) !== "EADDRINUSE") throw error;
         await delay(100);
       }
     }
-    throw new Error("Silver CLI 未能发布本机连接。请退出已有实例后重试。");
+    throw new AppError(ERROR_CODES.HOST_PUBLISH_FAILED);
   }
-  const lockPath = join(dataDir, LOCK_FILE);
-  const deadline = Date.now() + 15_000;
+  const lockPath: string = join(dataDir, LOCK_FILE);
+  const deadline: number = Date.now() + 15_000;
   while (Date.now() < deadline) {
-    const existing = await connectEndpoint(dataDir);
+    const existing: Endpoint | undefined = await connectEndpoint(dataDir);
     if (existing) return { endpoint: existing };
     try {
-      const owner = await open(lockPath, "wx", 0o600);
+      const owner: FileHandle = await open(lockPath, "wx", 0o600);
       try {
         await owner.writeFile(JSON.stringify({ pid: process.pid }), "utf8");
       } finally {
         await owner.close();
       }
-      return { release: () => unlink(lockPath) };
+      return { release: (): Promise<void> => unlink(lockPath) };
     } catch (error) {
       if (errorCode(error) !== "EEXIST") throw error;
     }
-    const owner = await readJson(lockPath).catch(() => undefined) as { pid?: number } | undefined;
-    const ownerPid = owner?.pid;
-    const havePid = typeof ownerPid === "number" && Number.isSafeInteger(ownerPid) && ownerPid > 0;
-    const expiredUnwritten = !havePid && await stat(lockPath).then(
-      (info) => Date.now() - info.mtimeMs > 3000, () => false,
+    const owner: { pid?: number; } | undefined = await readJson(lockPath).catch((): undefined => undefined) as { pid?: number } | undefined;
+    const ownerPid: number | undefined = owner?.pid;
+    const havePid: boolean = typeof ownerPid === "number" && Number.isSafeInteger(ownerPid) && ownerPid > 0;
+    const expiredUnwritten: boolean = !havePid && await stat(lockPath).then(
+      (info: Stats): boolean => Date.now() - info.mtimeMs > 3000, (): boolean => false
     );
-    if ((havePid && !processExists(ownerPid)) || expiredUnwritten) {
-      await unlink(lockPath).catch((error: unknown) => {
+    if ((typeof ownerPid === "number" && havePid && !processExists(ownerPid)) || expiredUnwritten) {
+      await unlink(lockPath).catch((error: unknown): void => {
         if (errorCode(error) !== "ENOENT") throw error;
       });
     } else {
       await delay(100);
     }
   }
-  throw new Error("Silver CLI 未能发布本机连接。请退出已有实例后重试。");
+  throw new AppError(ERROR_CODES.HOST_PUBLISH_FAILED);
 }
 
-function allowedOrigin(origin: string) {
+function allowedOrigin(origin: string): boolean {
   return origin === "tauri://localhost" || origin === "http://tauri.localhost" ||
     origin === "https://tauri.localhost" || /^http:\/\/(?:localhost|127\.0\.0\.1):[0-9]{1,5}$/u.test(origin);
 }
 
-function authenticated(request: IncomingMessage, token: Buffer) {
-  const header = request.headers.authorization;
+function authenticated(request: IncomingMessage, token: Buffer): boolean {
+  const header: string | undefined = request.headers.authorization;
   if (typeof header !== "string" || !header.startsWith("Bearer ")) return false;
-  const value = Buffer.from(header.slice(7), "utf8");
+  const value: Buffer<ArrayBuffer> = Buffer.from(header.slice(7), "utf8");
   return token.length === value.length && timingSafeEqual(token, value);
 }
 
-function json(response: ServerResponse, status: number, value: unknown) {
-  const encoded = JSON.stringify(value ?? null);
+function json(response: ServerResponse, status: number, value: unknown): void {
+  const encoded: string = JSON.stringify(value ?? null);
   response.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
   response.end(encoded);
 }
 
-class HttpError extends Error {
+class HttpError extends AppError {
   readonly status: number;
 
-  constructor(status: number, message: string) {
-    super(message);
+  constructor(status: number, code: ErrorCode) {
+    super(code);
+    this.name = "HttpError";
     this.status = status;
   }
 }
 
 async function jsonBody(request: IncomingMessage): Promise<unknown> {
   if (!request.headers["content-type"]?.toLowerCase().startsWith("application/json")) {
-    throw new HttpError(415, "请求正文必须为 JSON。");
+    throw new HttpError(415, ERROR_CODES.HOST_JSON_REQUIRED);
   }
-  if (Number(request.headers["content-length"]) > MAX_BODY_BYTES) throw new HttpError(413, "请求正文过大。");
+  if (Number(request.headers["content-length"]) > MAX_BODY_BYTES) {
+    throw new HttpError(413, ERROR_CODES.HOST_BODY_TOO_LARGE);
+  }
   const chunks: Buffer[] = [];
-  let size = 0;
+  let size: number = 0;
   for await (const chunk of request) {
-    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    const bytes: Buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array | string);
     size += bytes.length;
-    if (size > MAX_BODY_BYTES) throw new HttpError(413, "请求正文过大。");
+    if (size > MAX_BODY_BYTES) throw new HttpError(413, ERROR_CODES.HOST_BODY_TOO_LARGE);
     chunks.push(bytes);
   }
   try {
     return JSON.parse(Buffer.concat(chunks).toString("utf8"));
   } catch {
-    throw new HttpError(400, "请求 JSON 无法读取。");
+    throw new HttpError(400, ERROR_CODES.HOST_JSON_INVALID);
   }
 }
 
@@ -241,7 +256,7 @@ interface EventClient {
   pending?: string;
 }
 
-function sendEvent(client: EventClient, frame: string) {
+function sendEvent(client: EventClient, frame: string): void {
   if (client.response.destroyed) return;
   if (client.busy) {
     client.pending = frame;
@@ -249,54 +264,61 @@ function sendEvent(client: EventClient, frame: string) {
   }
   if (client.response.write(frame)) return;
   client.busy = true;
-  client.response.once("drain", () => {
+  client.response.once("drain", (): void => {
     client.busy = false;
-    const pending = client.pending;
+    const pending: string | undefined = client.pending;
     client.pending = undefined;
     if (pending) sendEvent(client, pending);
   });
 }
 
 export async function serve(
-  options: { runtime: Runtime; dataDir?: string },
+  options: { runtime: Runtime; dataDir?: string }
 ): Promise<RunningHost> {
-  const { runtime, dataDir = appDataDir() } = options;
+  const { runtime, dataDir = appDataDir() }: { runtime: Runtime; dataDir?: string; } = options;
   mkdirSync(dataDir, { recursive: true, mode: 0o700 });
-  const ownership = await acquireHost(dataDir);
-  if ("endpoint" in ownership) return { endpoint: ownership.endpoint, reused: true, publish() {}, async close() {} };
-  const { release } = ownership;
+  const ownership: HostOwnership = await acquireHost(dataDir);
+  if ("endpoint" in ownership) {
+    return {
+      endpoint: ownership.endpoint,
+      reused: true,
+      publish: (): void => undefined,
+      close: (): Promise<void> => Promise.resolve(),
+    };
+  }
+  const release = (): Promise<void> => ownership.release();
 
-  const endpointPath = join(dataDir, ENDPOINT_FILE);
-  const token = randomBytes(32).toString("hex");
-  const tokenBytes = Buffer.from(token, "utf8");
-  const clients = new Set<EventClient>();
+  const endpointPath: string = join(dataDir, ENDPOINT_FILE);
+  const token: string = randomBytes(32).toString("hex");
+  const tokenBytes: Buffer<ArrayBuffer> = Buffer.from(token, "utf8");
+  const clients: Set<EventClient> = new Set();
   let endpoint: Endpoint;
   let unsubscribe: (() => void) | undefined;
   let heartbeat: NodeJS.Timeout | undefined;
   let finishing: Promise<void> | undefined;
   let closing: Promise<void> | undefined;
 
-  function publish(state: unknown) {
+  function publish(state: unknown): void {
     if (!clients.size) return;
-    const frame = `data: ${JSON.stringify(state)}\n\n`;
+    const frame: string = `data: ${JSON.stringify(state)}\n\n`;
     for (const client of clients) sendEvent(client, frame);
   }
 
-  function beginShutdown() {
-    finishing ??= Promise.resolve().then(() => runtime.shutdown()).catch((error: unknown) => {
+  function beginShutdown(): Promise<void> {
+    finishing ??= Promise.resolve().then((): void | Promise<void> => runtime.shutdown()).catch((error: unknown): never => {
       finishing = undefined;
       throw error;
     });
     return finishing;
   }
 
-  async function handle(request: IncomingMessage, response: ServerResponse) {
+  async function handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
     response.setHeader("Cache-Control", "no-store");
     response.setHeader("X-Content-Type-Options", "nosniff");
-    const origin = request.headers.origin;
+    const origin: string | undefined = request.headers.origin;
     if (request.socket.remoteAddress !== LOOPBACK ||
       request.headers.host !== `${LOOPBACK}:${endpoint.port}` || (origin && !allowedOrigin(origin))) {
-      json(response, 403, { error: "只接受 Silver 桌面窗口的本机连接。" });
+      json(response, 403, { error: ERROR_CODES.HOST_LOCAL_ONLY, code: ERROR_CODES.HOST_LOCAL_ONLY });
       return;
     }
     if (origin) {
@@ -311,7 +333,7 @@ export async function serve(
       return;
     }
     if (!authenticated(request, tokenBytes)) {
-      json(response, 401, { error: "Silver CLI 鉴权失败。" });
+      json(response, 401, { error: ERROR_CODES.HOST_UNAUTHORIZED, code: ERROR_CODES.HOST_UNAUTHORIZED });
       return;
     }
     if (request.method === "GET" && request.url === "/health") {
@@ -326,40 +348,45 @@ export async function serve(
       });
       const client: EventClient = { response, busy: false };
       clients.add(client);
-      response.on("close", () => clients.delete(client));
+      response.on("close", (): boolean => clients.delete(client));
       sendEvent(client, `data: ${JSON.stringify(runtime.getState())}\n\n`);
     } else if (request.method === "POST" && request.url === "/shutdown") {
       await beginShutdown();
-      response.once("finish", () => { void close().catch(() => { process.exitCode = 1; }); });
+      response.once("finish", (): void => { void close().catch((): void => { process.exitCode = 1; }); });
       json(response, 200, { ok: true });
     } else if (request.method === "POST" && request.url === "/action") {
-      if (finishing) throw new HttpError(503, "Silver CLI 正在退出。");
-      const body = await jsonBody(request);
+      if (finishing) throw new HttpError(503, ERROR_CODES.HOST_EXITING);
+      const body: unknown = await jsonBody(request);
       if (typeof body !== "object" || body === null || !("name" in body) || !("args" in body) ||
         typeof body.name !== "string" || !/^[\w.:-]{1,128}$/u.test(body.name) || !Array.isArray(body.args)) {
-        throw new HttpError(400, "CLI 动作格式无效。");
+        throw new HttpError(400, ERROR_CODES.HOST_ACTION_FORMAT_INVALID);
       }
-      if (finishing) throw new HttpError(503, "Silver CLI 正在退出。");
+      if (finishing) throw new HttpError(503, ERROR_CODES.HOST_EXITING);
       json(response, 200, await runtime.action(body.name, body.args));
     } else {
-      json(response, 404, { error: "CLI 路径不存在。" });
+      json(response, 404, { error: ERROR_CODES.HOST_ROUTE_NOT_FOUND, code: ERROR_CODES.HOST_ROUTE_NOT_FOUND });
     }
   }
 
-  const server = createServer((request, response) => {
-    void handle(request, response).catch((error: unknown) => {
+  const server: HttpServer = createServer((request: IncomingMessage, response: ServerResponse<IncomingMessage> & { req: IncomingMessage; }): void => {
+    void handle(request, response).catch((error: unknown): void => {
       if (response.headersSent || response.destroyed) {
         response.end();
         return;
       }
-      json(response, error instanceof HttpError ? error.status : 500, {
-        error: error instanceof Error ? error.message : "本机 CLI 执行失败。",
+      const parsed: ParsedErrorCode = extractErrorCode(error, ERROR_CODES.HOST_EXECUTION_FAILED);
+      const status: number = error instanceof HttpError ? error.status : 500;
+      if (status >= 500) logError(error, undefined, ERROR_CODES.HOST_EXECUTION_FAILED);
+      json(response, status, {
+        error: encodeErrorCode(parsed.code, parsed.params),
+        code: parsed.code,
+        ...(parsed.params ? { params: parsed.params } : {}),
       });
     });
   });
 
   function close(): Promise<void> {
-    closing ??= (async () => {
+    closing ??= (async (): Promise<undefined> => {
       try {
         await beginShutdown();
       } finally {
@@ -368,8 +395,8 @@ export async function serve(
         process.off("SIGINT", onSignal);
         process.off("SIGTERM", onSignal);
         for (const { response } of clients) response.end();
-        await new Promise<void>((done) => {
-          server.close(() => done());
+        await new Promise<void>((done: (value: void | PromiseLike<void>) => void): void => {
+          server.close((): void => done());
           server.closeAllConnections();
         });
         try {
@@ -382,24 +409,24 @@ export async function serve(
     return closing;
   }
 
-  function onSignal() {
-    void close().catch(() => { process.exitCode = 1; });
+  function onSignal(): void {
+    void close().catch((): void => { process.exitCode = 1; });
   }
 
   try {
-    await new Promise<void>((done, reject) => {
+    await new Promise<void>((done: (value: void | PromiseLike<void>) => void, reject: (error: Error) => void): void => {
       server.once("error", reject);
-      server.listen(0, LOOPBACK, () => {
+      server.listen(0, LOOPBACK, (): void => {
         server.off("error", reject);
         done();
       });
     });
-    const address = server.address();
-    if (!address || typeof address === "string") throw new Error("无法获取 Silver CLI 端口。");
+    const address: string | AddressInfo | null = server.address();
+    if (!address || typeof address === "string") throw new AppError(ERROR_CODES.HOST_PORT_UNAVAILABLE);
     endpoint = { port: address.port, token, pid: process.pid };
     writePrivateJson(endpointPath, endpoint);
     unsubscribe = runtime.subscribe?.(publish);
-    heartbeat = setInterval(() => {
+    heartbeat = setInterval((): void => {
       for (const client of clients) if (!client.busy) sendEvent(client, ": silver\n\n");
     }, 15_000);
     heartbeat.unref();
