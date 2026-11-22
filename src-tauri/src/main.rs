@@ -6,9 +6,101 @@ use runtime::{desktop_request, DesktopRuntime};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Manager, WindowEvent,
+    window::Color,
+    AppHandle, Manager, Theme, WebviewWindow, WindowEvent,
 };
 use tauri_plugin_dialog::DialogExt;
+
+const LIGHT_BG: [u8; 3] = [0xf6, 0xef, 0xe2];
+const LIGHT_FG: [u8; 3] = [0x2c, 0x24, 0x1b];
+const LIGHT_BORDER: [u8; 3] = [0xd9, 0xcc, 0xb4];
+const DARK_BG: [u8; 3] = [0x2c, 0x26, 0x1f];
+const DARK_FG: [u8; 3] = [0xf3, 0xea, 0xd8];
+const DARK_BORDER: [u8; 3] = [0x44, 0x3b, 0x2f];
+
+#[cfg(target_os = "windows")]
+mod win_titlebar {
+    use std::ffi::c_void;
+    use tauri::WebviewWindow;
+
+    const DWMWA_USE_IMMERSIVE_DARK_MODE: u32 = 20;
+    const DWMWA_BORDER_COLOR: u32 = 34;
+    const DWMWA_CAPTION_COLOR: u32 = 35;
+    const DWMWA_TEXT_COLOR: u32 = 36;
+
+    #[link(name = "dwmapi")]
+    extern "system" {
+        fn DwmSetWindowAttribute(
+            hwnd: *mut c_void,
+            dw_attribute: u32,
+            pv_attribute: *const c_void,
+            cb_attribute: u32,
+        ) -> i32;
+    }
+
+    fn colorref([r, g, b]: [u8; 3]) -> u32 {
+        (u32::from(b) << 16) | (u32::from(g) << 8) | u32::from(r)
+    }
+
+    pub fn apply(window: &WebviewWindow, dark: bool, bg: [u8; 3], fg: [u8; 3], border: [u8; 3]) {
+        let Ok(hwnd) = window.hwnd() else {
+            return;
+        };
+        let handle = hwnd.0 as *mut c_void;
+        let dark_val: i32 = if dark { 1 } else { 0 };
+        let caption = colorref(bg);
+        let text = colorref(fg);
+        let frame_border = colorref(border);
+        unsafe {
+            DwmSetWindowAttribute(
+                handle,
+                DWMWA_USE_IMMERSIVE_DARK_MODE,
+                (&dark_val as *const i32).cast::<c_void>(),
+                std::mem::size_of::<i32>() as u32,
+            );
+            DwmSetWindowAttribute(
+                handle,
+                DWMWA_CAPTION_COLOR,
+                (&caption as *const u32).cast::<c_void>(),
+                std::mem::size_of::<u32>() as u32,
+            );
+            DwmSetWindowAttribute(
+                handle,
+                DWMWA_TEXT_COLOR,
+                (&text as *const u32).cast::<c_void>(),
+                std::mem::size_of::<u32>() as u32,
+            );
+            DwmSetWindowAttribute(
+                handle,
+                DWMWA_BORDER_COLOR,
+                (&frame_border as *const u32).cast::<c_void>(),
+                std::mem::size_of::<u32>() as u32,
+            );
+        }
+    }
+}
+
+fn apply_window_theme(window: &WebviewWindow, dark: bool, bg: [u8; 3], fg: [u8; 3], border: [u8; 3]) {
+    let _ = window.set_theme(Some(if dark { Theme::Dark } else { Theme::Light }));
+    let _ = window.set_background_color(Some(Color(bg[0], bg[1], bg[2], 255)));
+    #[cfg(target_os = "windows")]
+    win_titlebar::apply(window, dark, bg, fg, border);
+    #[cfg(not(target_os = "windows"))]
+    let _ = (fg, border);
+}
+
+#[tauri::command]
+fn set_window_theme(
+    app: AppHandle,
+    dark: bool,
+    bg: [u8; 3],
+    fg: [u8; 3],
+    border: [u8; 3],
+) {
+    if let Some(window) = app.get_webview_window("main") {
+        apply_window_theme(&window, dark, bg, fg, border);
+    }
+}
 
 fn show_main(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
@@ -61,7 +153,11 @@ fn main() {
             show_main(app)
         }))
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![desktop_request, choose_workspace])
+        .invoke_handler(tauri::generate_handler![
+            desktop_request,
+            choose_workspace,
+            set_window_theme
+        ])
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
                 if !window.state::<DesktopRuntime>().is_quitting() {
@@ -72,6 +168,14 @@ fn main() {
         })
         .setup(|app| {
             app.manage(DesktopRuntime::new()?);
+            if let Some(window) = app.get_webview_window("main") {
+                let dark = matches!(window.theme(), Ok(Theme::Dark));
+                if dark {
+                    apply_window_theme(&window, true, DARK_BG, DARK_FG, DARK_BORDER);
+                } else {
+                    apply_window_theme(&window, false, LIGHT_BG, LIGHT_FG, LIGHT_BORDER);
+                }
+            }
             let open = MenuItem::with_id(app, "open", "打开 Silver", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "保存并退出 Silver", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&open, &quit])?;

@@ -25,3 +25,12 @@ export const desktopAction = <T = void>(name: string, ...args: unknown[]) =>
 export const listenDesktop = (accept: (snapshot: DesktopSnapshot) => void) =>
   listen<DesktopSnapshot>("silver://state", ({ payload }) => accept(payload));
 export const chooseDirectory = () => invoke<string | null>("choose_workspace");
+export const syncWindowTheme = (
+  dark: boolean,
+  bg: [number, number, number],
+  fg: [number, number, number],
+  border: [number, number, number],
+) => {
+  if (!isTauri()) return;
+  void invoke("set_window_theme", { dark, bg, fg, border }).catch(() => undefined);
+};

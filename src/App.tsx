@@ -1,5 +1,6 @@
 import { useEffect, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { useSilverStore } from "./state/silverStore";
+import { syncWindowTheme } from "./model/desktopClient";
 import { Sidebar } from "./shell/Sidebar";
 import { Editor } from "./shell/Editor";
 import { AGENT_TABS, AgentPane } from "./shell/AgentPane";
@@ -19,6 +20,24 @@ const RIGHT_DEFAULT = 280;
 const RIGHT_MIN = 200;
 const RIGHT_MAX = 520;
 const CENTER_MIN = 360;
+
+function parseHexColor(value: string, fallback: [number, number, number]): [number, number, number] {
+  const hex = value.trim().replace(/^#/u, "");
+  if (!/^[0-9a-fA-F]{6}$/u.test(hex)) return fallback;
+  return [
+    Number.parseInt(hex.slice(0, 2), 16),
+    Number.parseInt(hex.slice(2, 4), 16),
+    Number.parseInt(hex.slice(4, 6), 16),
+  ];
+}
+
+function pushWindowTheme(root: HTMLElement, dark: boolean) {
+  const styles = window.getComputedStyle(root);
+  const bg = parseHexColor(styles.getPropertyValue("--color-surface"), dark ? [0x2c, 0x26, 0x1f] : [0xf6, 0xef, 0xe2]);
+  const fg = parseHexColor(styles.getPropertyValue("--color-label"), dark ? [0xf3, 0xea, 0xd8] : [0x2c, 0x24, 0x1b]);
+  const border = parseHexColor(styles.getPropertyValue("--color-fill"), dark ? [0x44, 0x3b, 0x2f] : [0xd9, 0xcc, 0xb4]);
+  syncWindowTheme(dark, bg, fg, border);
+}
 
 function readWidth(key: string, fallback: number, min: number, max: number): number {
   try {
@@ -125,13 +144,18 @@ function Shell() {
     const root = document.documentElement;
     if (theme === "dark") {
       root.classList.add("dark");
+      pushWindowTheme(root, true);
     } else if (theme === "light") {
       root.classList.remove("dark");
+      pushWindowTheme(root, false);
     } else {
       const mq = window.matchMedia("(prefers-color-scheme: dark)");
       root.classList.toggle("dark", mq.matches);
-      const handler = (e: MediaQueryListEvent) =>
+      pushWindowTheme(root, mq.matches);
+      const handler = (e: MediaQueryListEvent) => {
         root.classList.toggle("dark", e.matches);
+        pushWindowTheme(root, e.matches);
+      };
       mq.addEventListener("change", handler);
       return () => mq.removeEventListener("change", handler);
     }
@@ -264,7 +288,7 @@ function Shell() {
         <button
           type="button"
           aria-label="关闭面板"
-          className="absolute inset-0 z-30 bg-label/15 min-[960px]:hidden"
+          className="absolute inset-0 z-30 bg-scrim min-[960px]:hidden"
           onClick={() => { setSidebarOverlay(false); setFilesOpen(false); }}
         />
       )}
