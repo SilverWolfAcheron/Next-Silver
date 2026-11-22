@@ -336,11 +336,14 @@ export const enMessages: Messages = {
   },
 
   gitDiff: {
+    sectionTitle: "Changes",
     noWorkspace: "Open a workspace folder to view Git changes.",
     notGitRepo: "The current workspace is not a Git repository.",
     cleanWorkingTree: "Working tree is clean — no uncommitted changes.",
     loading: "Loading Git changes…",
     refresh: "Refresh",
+    refreshChanges: "Refresh changes",
+    collapseChanges: "Collapse changes",
     expandAll: "Expand all",
     collapseAll: "Collapse all",
     openFile: "Open file",

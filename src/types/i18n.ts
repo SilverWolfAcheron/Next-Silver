@@ -319,11 +319,14 @@ export interface Messages {
   };
 
   gitDiff: {
+    sectionTitle: string;
     noWorkspace: string;
     notGitRepo: string;
     cleanWorkingTree: string;
     loading: string;
     refresh: string;
+    refreshChanges: string;
+    collapseChanges: string;
     expandAll: string;
     collapseAll: string;
     openFile: string;

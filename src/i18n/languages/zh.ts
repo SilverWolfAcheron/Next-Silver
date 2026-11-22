@@ -336,11 +336,14 @@ export const zhMessages: Messages = {
   },
 
   gitDiff: {
+    sectionTitle: "改动",
     noWorkspace: "请先打开工作区文件夹以查看 Git 改动。",
     notGitRepo: "当前工作区不是 Git 仓库。",
     cleanWorkingTree: "当前工作区暂无未提交的改动。",
     loading: "正在读取 Git 改动…",
     refresh: "刷新",
+    refreshChanges: "刷新改动",
+    collapseChanges: "折叠改动目录",
     expandAll: "全部展开",
     collapseAll: "全部折叠",
     openFile: "打开文件",
