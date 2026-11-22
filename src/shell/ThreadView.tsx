@@ -1,19 +1,24 @@
 import { useLayoutEffect, useRef } from "react";
-import { useSilver } from "../state/SilverContext";
+import { useSilverStore } from "../state/silverStore";
 import type { ChatMessage } from "../model/types";
 import { CopyButton } from "../ui/CopyButton";
 
-export function ThreadView() {
-  const {
-    currentThread,
-    retryMessage,
-    chooseMessage,
-    resolveConfirmation,
-  } = useSilver();
+interface ThreadViewProps {
+  centered?: boolean;
+  onPickReferenceFile?: () => void;
+}
+
+export function ThreadView({ centered = false, onPickReferenceFile }: ThreadViewProps) {
+  const currentThread = useSilverStore((s) => s.currentThread);
+  const retryMessage = useSilverStore((s) => s.retryMessage);
+  const chooseMessage = useSilverStore((s) => s.chooseMessage);
+  const resolveConfirmation = useSilverStore((s) => s.resolveConfirmation);
+  const openFolder = useSilverStore((s) => s.openFolder);
   const viewport = useRef<HTMLDivElement>(null);
   const followMessages = useRef(true);
-  const lastThreadId = useRef<string>();
+  const lastThreadId = useRef<string | undefined>(undefined);
   const threadId = currentThread?.id;
+  const workspace = currentThread?.workspace;
   const messages = currentThread?.messages;
   const queuedMessages = currentThread?.queuedMessages;
 
@@ -38,7 +43,7 @@ export function ThreadView() {
         }}
       >
         {currentThread && (currentThread.messages.length > 0 || Boolean(queuedMessages?.length)) ? (
-          <div className="flex flex-col gap-3 px-3 py-4">
+          <div className={`flex flex-col gap-3 px-4 py-4 ${centered ? "mx-auto w-full max-w-4xl" : ""}`}>
             {currentThread.messages.map((message) => {
               if (message.role === "user") precedingUserId = message.id;
               const retryId = message.role === "user" || message.error ? precedingUserId : undefined;
@@ -55,8 +60,42 @@ export function ThreadView() {
             {queuedMessages?.map((message) => <Message key={message.id} message={message} queued />)}
           </div>
         ) : (
-          <div className="flex h-full items-center justify-center px-4 text-center">
-            <p className="text-[13px] text-secondary">描述要改的文件或行为。输入 @ 可以点名项目里的文件。</p>
+          <div className="flex h-full flex-col items-center justify-center px-6 text-center">
+            {centered ? (
+              <>
+                <h1 className="text-[28px] font-semibold text-label">
+                  {workspace?.name ?? "打开项目"}
+                </h1>
+                <p className="mt-3 max-w-md text-[15px] leading-6 text-secondary">
+                  {workspace
+                    ? "在下方描述要改的文件或行为，输入 @ 点名文件，或点击下方添加参考文件。"
+                    : "选择一个本地文件夹。对话、文件预览、差异和检查都会从这里开始。"}
+                </p>
+                <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+                  {workspace ? (
+                    onPickReferenceFile && (
+                      <button
+                        type="button"
+                        onClick={onPickReferenceFile}
+                        className="inline-flex min-h-10 items-center rounded-full border border-separator bg-group px-4 text-[14px] font-medium text-label hover:bg-fill"
+                      >
+                        选择参考文件
+                      </button>
+                    )
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => void openFolder()}
+                      className="inline-flex min-h-11 items-center rounded-full bg-accent px-5 text-[15px] font-medium text-on-accent hover:opacity-90"
+                    >
+                      打开文件夹
+                    </button>
+                  )}
+                </div>
+              </>
+            ) : (
+              <p className="text-[13px] text-secondary">描述要改的文件或行为。输入 @ 可以点名项目里的文件。</p>
+            )}
           </div>
         )}
       </div>

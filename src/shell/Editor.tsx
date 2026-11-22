@@ -1,29 +1,43 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { useSilver } from "../state/SilverContext";
+import { useSilverStore, type EditorTabState } from "../state/silverStore";
+import { detectLanguage, highlightSource, languageLabel } from "../model/highlight";
 import { subscribeWorkspaceChanges } from "../model/workspace";
+import { CodeView } from "./CodeView";
 
 interface EditorProps {
-  onOpenSidebar: () => void;
-  onOpenAgent: () => void;
+  onOpenSidebar?: () => void;
+  onOpenAgent?: () => void;
   onOpenQuickFiles?: () => void;
   onAttachFile?: (path: string) => void;
-  showSidebarButton: boolean;
-  showAgentButton: boolean;
+  onAllTabsClosed?: () => void;
+  showSidebarButton?: boolean;
+  showAgentButton?: boolean;
+  embedded?: boolean;
 }
 
-interface FileTabs {
-  paths: string[];
-  active: string;
-}
-
-const EMPTY_TABS: FileTabs = { paths: [], active: "" };
+const EMPTY_TABS: EditorTabState = { paths: [], active: "" };
 const LINE_HEIGHT = 20;
-const controlClass = "min-h-11 shrink-0 rounded-[10px] px-2 text-[13px] text-secondary hover:bg-fill disabled:opacity-45";
+const controlClass = "h-8 shrink-0 rounded-[7px] px-2 text-[12px] text-secondary hover:bg-fill hover:text-label disabled:opacity-45";
 
 export function Editor({
-  onOpenSidebar, onOpenAgent, onOpenQuickFiles, onAttachFile, showSidebarButton, showAgentButton,
+  onOpenSidebar,
+  onOpenAgent,
+  onOpenQuickFiles,
+  onAttachFile,
+  onAllTabsClosed,
+  showSidebarButton = false,
+  showAgentButton = false,
+  embedded = false,
 }: EditorProps) {
-  const { currentThread, filePreview, previewFile, closeFilePreview, openFolder } = useSilver();
+  const currentThread = useSilverStore((s) => s.currentThread);
+  const filePreview = useSilverStore((s) => s.filePreview);
+  const editorTabs = useSilverStore((s) => s.editorTabs);
+  const previewFile = useSilverStore((s) => s.previewFile);
+  const closeFilePreview = useSilverStore((s) => s.closeFilePreview);
+  const openFolder = useSilverStore((s) => s.openFolder);
+  const ensureEditorTab = useSilverStore((s) => s.ensureEditorTab);
+  const closeEditorTab = useSilverStore((s) => s.closeEditorTab);
+
   const threadId = currentThread?.id;
   const workspace = currentThread?.workspace;
   const scope = threadId && workspace ? JSON.stringify([threadId, workspace.id]) : "";
@@ -32,8 +46,7 @@ export function Editor({
   const path = preview?.path;
   const body = preview?.body;
   const line = preview?.line;
-  const [sessions, setSessions] = useState<Record<string, FileTabs>>({});
-  const saved = sessions[scope] ?? EMPTY_TABS;
+  const saved = editorTabs[scope] ?? EMPTY_TABS;
   const paths = path && !saved.paths.includes(path) ? [...saved.paths, path] : saved.paths;
   const [findOpen, setFindOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -49,13 +62,8 @@ export function Editor({
 
   useLayoutEffect(() => {
     if (!scope || !path) return;
-    setSessions((current) => {
-      const previous = current[scope] ?? EMPTY_TABS;
-      if (previous.active === path) return current;
-      const paths = previous.paths.includes(path) ? previous.paths : [...previous.paths, path];
-      return { ...current, [scope]: { paths, active: path } };
-    });
-  }, [scope, path]);
+    ensureEditorTab(scope, path);
+  }, [scope, path, ensureEditorTab]);
 
   useEffect(() => {
     if (previousScope.current === scope) return;
@@ -69,6 +77,11 @@ export function Editor({
   }, [workspace, threadId, path, previewFile]);
 
   const source = useMemo(() => body?.replace(/\r\n/gu, "\n") ?? "", [body]);
+  const highlighted = useMemo(() => highlightSource(source, path), [source, path]);
+  const detectedLabel = useMemo(
+    () => highlighted?.label ?? (path ? languageLabel(detectLanguage(path, source), path) : null),
+    [highlighted, path, source],
+  );
   const { gutter, lineCount } = useMemo(() => {
     const lineCount = source.split("\n").length;
     const gutter = Array.from({ length: lineCount }, (_, index) => index + 1).join("\n");
@@ -143,16 +156,15 @@ export function Editor({
   }
 
   function closeTab(closed: string) {
-    const index = paths.indexOf(closed);
-    if (index < 0 || !threadId || !scope) return;
-    const rest = paths.filter((entry) => entry !== closed);
-    const closingActive = (path ?? saved.active) === closed;
-    const next = closingActive ? rest[Math.min(index, rest.length - 1)] : saved.active;
+    if (!threadId || !scope) return;
     positions.current.delete(JSON.stringify([scope, closed]));
-    setSessions((current) => ({ ...current, [scope]: { paths: rest, active: next ?? "" } }));
+    const { next, closingActive } = closeEditorTab(scope, closed);
     if (closingActive) {
       if (next) void previewFile(threadId, next);
-      else closeFilePreview();
+      else {
+        closeFilePreview();
+        onAllTabsClosed?.();
+      }
     }
     if (next && document.activeElement && section.current?.contains(document.activeElement)) {
       tabButton(next)?.focus({ preventScroll: true });
@@ -193,65 +205,87 @@ export function Editor({
   }
 
   return (
-    <section ref={section} aria-label="编辑器" onKeyDown={handleKey} className="flex min-w-0 flex-1 flex-col bg-surface">
-      <header className="flex h-11 shrink-0 items-center gap-1 border-b border-separator px-2">
-        <button
-          type="button"
-          aria-label="切换侧栏"
-          onClick={onOpenSidebar}
-          className={`${controlClass} ${showSidebarButton ? "" : "min-[960px]:hidden"}`}
-        >
-          文件
-        </button>
-        <span className="min-w-0 flex-1 truncate font-mono text-[13px] text-secondary" title={path}>
-          {path ?? workspace?.name ?? "未打开项目"}
-        </span>
-        {workspace && onOpenQuickFiles && (
-          <button type="button" aria-label="快速打开文件" title="快速打开文件 (Ctrl+P)" onClick={onOpenQuickFiles} className={controlClass}>
-            快速打开
-          </button>
-        )}
-        {path && (
-          <>
-            <button type="button" aria-label="在文件中查找" aria-expanded={findOpen} title="在文件中查找 (Ctrl+F)"
-              disabled={body === undefined} onClick={openFind} className={controlClass}>查找</button>
-            <button type="button" aria-label="重新读取文件" onClick={() => { if (threadId) void previewFile(threadId, path); }} className={controlClass}>刷新</button>
-            {onAttachFile && (
-              <button type="button" aria-label="将当前文件添加到对话" disabled={body === undefined} onClick={() => onAttachFile(path)} className={controlClass}>添加到对话</button>
-            )}
-          </>
-        )}
-        {showAgentButton && (
-          <button type="button" aria-label="打开对话" onClick={onOpenAgent} className={`${controlClass} min-[960px]:hidden`}>
-            对话
-          </button>
-        )}
-      </header>
+    <section ref={section} aria-label="编辑器" onKeyDown={handleKey} className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-surface">
       {paths.length > 0 && (
         <div role="tablist" aria-label="打开的文件" className="flex shrink-0 overflow-x-auto border-b border-separator bg-canvas">
           {paths.map((entry, index) => {
             const selected = entry === (path ?? saved.active);
             return (
-              <div key={entry} className={`flex max-w-64 shrink-0 items-center border-r border-separator ${selected ? "bg-group" : ""}`}>
+              <div
+                key={entry}
+                className={`relative flex h-9 max-w-64 shrink-0 items-center border-r border-separator pr-1.5 transition-colors ${
+                  selected ? "bg-surface text-label" : "bg-canvas text-secondary hover:bg-fill/45 hover:text-label"
+                }`}
+              >
+                {selected && (
+                  <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-[2px] bg-accent" />
+                )}
                 <button
                   type="button" role="tab" id={`editor-tab-${index}`}
                   tabIndex={selected ? 0 : -1} aria-selected={selected} aria-controls="editor-file"
                   aria-label={entry} title={entry} onClick={() => openTab(entry)}
-                  className="min-h-11 min-w-0 truncate px-3 text-left font-mono text-[13px] text-label hover:bg-fill"
+                  className="h-full min-w-0 truncate pl-3 pr-1.5 text-left font-mono text-[12px] text-inherit outline-none focus-visible:underline"
                 >
                   {fileLabel(entry)}
                 </button>
-                <button type="button" aria-label={`关闭文件 ${entry}`} title={`关闭文件 ${entry}`}
-                  onClick={() => closeTab(entry)} className={`${controlClass} min-w-11`}>
-                  ×
+                <button
+                  type="button"
+                  aria-label={`关闭文件 ${entry}`}
+                  title={`关闭文件 ${entry}`}
+                  onClick={() => closeTab(entry)}
+                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-tertiary transition-colors hover:bg-fill hover:text-label"
+                >
+                  <svg aria-hidden="true" viewBox="0 0 12 12" fill="none" className="h-3 w-3">
+                    <path d="M3 3l6 6M9 3 3 9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                  </svg>
                 </button>
               </div>
             );
           })}
         </div>
       )}
+      <header className="flex h-10 shrink-0 items-center gap-1.5 border-b border-separator px-3">
+        {!embedded && onOpenSidebar && (
+          <button
+            type="button"
+            aria-label="切换侧栏"
+            onClick={onOpenSidebar}
+            className={`${controlClass} ${showSidebarButton ? "" : "min-[960px]:hidden"}`}
+          >
+            文件
+          </button>
+        )}
+        <span className="min-w-0 truncate font-mono text-[12px] text-secondary" title={path}>
+          {path ?? workspace?.name ?? "未打开项目"}
+        </span>
+        {path && (
+          <div className="flex shrink-0 items-center gap-0.5 pl-1">
+            <button type="button" aria-label="在文件中查找" aria-expanded={findOpen} title="在文件中查找 (Ctrl+F)"
+              disabled={body === undefined} onClick={openFind} className={controlClass}>查找</button>
+            <button type="button" aria-label="重新读取文件" onClick={() => { if (threadId) void previewFile(threadId, path); }} className={controlClass}>刷新</button>
+            {onAttachFile && (
+              <button type="button" aria-label="将当前文件添加到对话" disabled={body === undefined} onClick={() => onAttachFile(path)} className={controlClass}>添加到对话</button>
+            )}
+          </div>
+        )}
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          {path && detectedLabel && (
+            <span
+              aria-label={`语法高亮 ${detectedLabel}`}
+              className="hidden shrink-0 rounded-[5px] bg-fill/75 px-1.5 py-0.5 font-mono text-[11px] text-secondary sm:inline"
+            >
+              {detectedLabel}
+            </span>
+          )}
+          {!embedded && showAgentButton && onOpenAgent && (
+            <button type="button" aria-label="打开对话" onClick={onOpenAgent} className={`${controlClass} min-[960px]:hidden`}>
+              对话
+            </button>
+          )}
+        </div>
+      </header>
       {findOpen && path && (
-        <div role="search" aria-label="在当前文件查找" className="flex shrink-0 items-center gap-1 border-b border-separator bg-group px-2">
+        <div role="search" aria-label="在当前文件查找" className="flex shrink-0 items-center gap-1 border-b border-separator bg-group px-2 py-1">
           <input
             ref={findInput} type="search" value={query} aria-label="查找文字" placeholder="查找文字"
             onChange={(event) => { setQuery(event.target.value); setMatchIndex(0); }}
@@ -260,9 +294,9 @@ export function Editor({
               event.preventDefault();
               stepMatch(event.shiftKey ? -1 : 1);
             }}
-            className="min-h-11 min-w-16 flex-1 rounded-[10px] bg-transparent px-2 text-[13px] text-label focus:outline-accent"
+            className="h-8 min-w-16 flex-1 rounded-[6px] bg-transparent px-2 text-[13px] text-label focus:outline-accent"
           />
-          <span role="status" aria-live="polite" className="shrink-0 text-[13px] text-secondary">
+          <span role="status" aria-live="polite" className="shrink-0 text-[12px] text-secondary">
             {query && (offsets.length ? `${Math.min(matchIndex + 1, offsets.length)} / ${offsets.length}` : "没有匹配")}
           </span>
           <button type="button" aria-label="上一个匹配" title="上一个匹配 (Shift+Enter)" disabled={!offsets.length} onClick={() => stepMatch(-1)} className={controlClass}>↑</button>
@@ -284,28 +318,38 @@ export function Editor({
                 {targetLine && <span aria-hidden="true" data-editor-line={targetLine} className="pointer-events-none absolute inset-x-0 h-[20px] bg-accent/15"
                   style={{ top: (targetLine - 1) * LINE_HEIGHT }} />}
                 <span aria-hidden="true" className="relative select-none pr-4 text-right text-tertiary">{gutter}</span>
-                <code className="relative whitespace-pre">
-                  {selection === undefined ? source : (
-                    <>
-                      {source.slice(0, selection)}
-                      <mark ref={mark} className="rounded-sm bg-accent/35 text-label">{source.slice(selection, selection + query.length)}</mark>
-                      {source.slice(selection + query.length)}
-                    </>
-                  )}
-                </code>
+                <CodeView
+                  source={source}
+                  root={highlighted?.root}
+                  language={highlighted?.language}
+                  offsets={offsets}
+                  activeOffset={selection}
+                  queryLength={findOpen ? query.length : 0}
+                  activeMarkRef={mark}
+                />
               </pre>
             </div>
           )}
         </div>
       ) : (
         <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
-          <h1 className="text-[28px] font-semibold text-label">{workspace?.name ?? "打开项目"}</h1>
-          <p className="mt-3 max-w-md text-[17px] text-secondary">
-            {workspace ? "从文件树或快速打开定位文件。" : "选择一个本地文件夹。对话、差异和检查都发生在这个项目里。"}
+          <h1 className="text-[24px] font-semibold text-label">{workspace?.name ?? "打开项目"}</h1>
+          <p className="mt-2 max-w-sm text-[14px] leading-6 text-secondary">
+            {workspace ? "从左侧文件树或快速打开定位文件。" : "选择一个本地文件夹。对话、差异和检查都发生在这个项目里。"}
           </p>
-          {!workspace && (
+          {workspace ? (
+            onOpenQuickFiles && (
+              <button
+                type="button"
+                onClick={onOpenQuickFiles}
+                className="mt-5 inline-flex min-h-10 items-center rounded-full border border-separator bg-group px-4 text-[13px] font-medium text-label hover:bg-fill"
+              >
+                选择文件 (Ctrl+P)
+              </button>
+            )
+          ) : (
             <button type="button" onClick={() => void openFolder()}
-              className="mt-6 inline-flex min-h-11 items-center rounded-full bg-accent px-4 text-[17px] font-medium text-on-accent">
+              className="mt-5 inline-flex min-h-10 items-center rounded-full bg-accent px-5 text-[14px] font-medium text-on-accent hover:opacity-90">
               打开文件夹
             </button>
           )}

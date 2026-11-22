@@ -47,14 +47,14 @@ export function ArtifactView({
   }, [selectedRunId, selectedArtifactId]);
 
   return (
-    <div className="flex min-w-0 flex-col gap-4 p-4">
+    <div className={`flex min-w-0 flex-col gap-4 p-4 ${artifacts.length === 0 ? "h-full" : ""}`}>
       {onPromote && (
         <Button variant="ghost" type="button" className="self-end text-[13px]" onClick={onPromote}>
           升成项目
         </Button>
       )}
       {artifacts.length === 0 && (
-        <div className="flex h-32 items-center justify-center text-[17px] text-secondary">暂无产物</div>
+        <div className="flex min-h-40 flex-1 items-center justify-center text-[15px] text-secondary">暂无产物</div>
       )}
       {Array.from(groups, ([runId, items]) => (
         <section
@@ -71,7 +71,7 @@ export function ArtifactView({
               key={artifact.id}
               ref={artifact.id === selectedArtifactId ? selectedItem : undefined}
               tabIndex={artifact.id === selectedArtifactId ? -1 : undefined}
-              className={`min-w-0 scroll-mt-3 rounded-[12px] bg-group ${artifact.kind === "diff" ? "overflow-hidden" : "p-4"}`}
+              className={`min-w-0 scroll-mt-3 rounded-[12px] border border-separator bg-group ${artifact.kind === "diff" ? "overflow-hidden" : "p-4"}`}
             >
               {artifact.kind === "diff" ? <>
                 <div className="border-b border-separator px-3 py-2">

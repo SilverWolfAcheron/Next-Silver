@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { searchWorkspaceFiles, searchWorkspaceText, workspaceErrorText, type WorkspaceSummary } from "../model/workspace";
 
-export type WorkspaceSearchMode = "files" | "text";
+export type WorkspaceSearchMode = "files" | "text" | "attach";
 
 interface SearchResult {
   path: string;
@@ -16,6 +16,7 @@ interface WorkspaceSearchProps {
   onClose: () => void;
   onOpenFolder: () => void;
   onOpen: (path: string, line?: number) => void;
+  onAttach?: (path: string) => void;
 }
 
 const FILE_LIMIT = 32;
@@ -29,7 +30,7 @@ function fileQuery(query: string): { path: string; line?: number } {
     : { path: query };
 }
 
-export function WorkspaceSearch({ mode, workspace, onMode, onClose, onOpenFolder, onOpen }: WorkspaceSearchProps) {
+export function WorkspaceSearch({ mode, workspace, onMode, onClose, onOpenFolder, onOpen, onAttach }: WorkspaceSearchProps) {
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const [matches, setMatches] = useState<SearchResult[]>([]);
@@ -38,8 +39,11 @@ export function WorkspaceSearch({ mode, workspace, onMode, onClose, onOpenFolder
   const [more, setMore] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
   const input = useRef<HTMLInputElement>(null);
+  const selected = useRef(false);
   const titleId = useId();
   const listId = useId();
+  const isAttach = mode === "attach";
+  const isFileMode = mode === "files" || isAttach;
 
   useEffect(() => {
     const previous = document.activeElement;
@@ -48,7 +52,7 @@ export function WorkspaceSearch({ mode, workspace, onMode, onClose, onOpenFolder
     input.current?.focus();
     return () => {
       panel?.close();
-      if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
+      if (!selected.current && previous instanceof HTMLElement && previous.isConnected) previous.focus();
     };
   }, []);
 
@@ -57,12 +61,12 @@ export function WorkspaceSearch({ mode, workspace, onMode, onClose, onOpenFolder
     setActive(0);
     setMore(false);
     setError("");
-    setLoading(Boolean(workspace && (mode === "files" || query.trim())));
+    setLoading(Boolean(workspace && (isFileMode || query.trim())));
     if (!workspace || (mode === "text" && !query.trim())) return;
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
-      const limit = mode === "files" ? FILE_LIMIT : TEXT_LIMIT;
-      const search = mode === "files" ? searchWorkspaceFiles : searchWorkspaceText;
+      const limit = isFileMode ? FILE_LIMIT : TEXT_LIMIT;
+      const search = isFileMode ? searchWorkspaceFiles : searchWorkspaceText;
       const file = mode === "files" ? fileQuery(query) : undefined;
       void search(workspace, file?.path ?? query, limit + 1, controller.signal).then((results) => {
         if (controller.signal.aborted) return;
@@ -73,10 +77,12 @@ export function WorkspaceSearch({ mode, workspace, onMode, onClose, onOpenFolder
       }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     }, query.trim() ? 160 : 0);
     return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [mode, query, workspace?.id]);
+  }, [mode, isFileMode, query, workspace?.id]);
 
   function select(result: SearchResult) {
-    onOpen(result.path, result.line);
+    selected.current = true;
+    if (isAttach && onAttach) onAttach(result.path);
+    else onOpen(result.path, result.line);
     onClose();
   }
 
@@ -101,7 +107,7 @@ export function WorkspaceSearch({ mode, workspace, onMode, onClose, onOpenFolder
 
   return (
     <dialog ref={dialog} aria-labelledby={titleId}
-      className="fixed top-[12vh] mx-auto my-0 w-[min(42rem,calc(100%-1.5rem))] max-h-[74vh] overflow-hidden rounded-[12px] border border-separator bg-group text-label backdrop:bg-label/25"
+      className="fixed inset-x-0 top-[14vh] mx-auto my-0 w-[min(42rem,calc(100%-1.5rem))] max-h-[74vh] overflow-hidden rounded-[12px] border border-separator bg-group text-label backdrop:bg-label/25"
       onCancel={(event) => { event.preventDefault(); onClose(); }}
       onKeyDown={(event) => {
         if (event.key === "Escape") {
@@ -113,19 +119,27 @@ export function WorkspaceSearch({ mode, workspace, onMode, onClose, onOpenFolder
       onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section className="flex max-h-[74vh] min-h-0 flex-col">
         <div className="flex items-center gap-2 border-b border-separator px-3">
-          <h2 id={titleId} className="sr-only">工作区搜索</h2>
-          <button type="button" aria-pressed={mode === "files"} onClick={() => { onMode("files"); input.current?.focus(); }}
-            className="min-h-11 rounded-[10px] px-3 text-[13px] hover:bg-fill aria-pressed:font-semibold aria-pressed:text-accent">打开文件</button>
-          <button type="button" aria-pressed={mode === "text"} onClick={() => { onMode("text"); input.current?.focus(); }}
-            className="min-h-11 rounded-[10px] px-3 text-[13px] hover:bg-fill aria-pressed:font-semibold aria-pressed:text-accent">搜索内容</button>
+          {isAttach ? (
+            <h2 id={titleId} className="flex min-h-11 items-center px-1 text-[13px] font-semibold text-label">
+              添加到对话参考
+            </h2>
+          ) : (
+            <>
+              <h2 id={titleId} className="sr-only">工作区搜索</h2>
+              <button type="button" aria-pressed={mode === "files"} onClick={() => { onMode("files"); input.current?.focus(); }}
+                className="min-h-11 rounded-[10px] px-3 text-[13px] hover:bg-fill aria-pressed:font-semibold aria-pressed:text-accent">打开文件</button>
+              <button type="button" aria-pressed={mode === "text"} onClick={() => { onMode("text"); input.current?.focus(); }}
+                className="min-h-11 rounded-[10px] px-3 text-[13px] hover:bg-fill aria-pressed:font-semibold aria-pressed:text-accent">搜索内容</button>
+            </>
+          )}
           <button type="button" onClick={onClose} className="ml-auto min-h-11 px-2 text-[13px] text-secondary hover:text-label">关闭</button>
         </div>
         {workspace ? (
           <>
             <input ref={input} type="text" role="combobox" aria-expanded={matches.length > 0} aria-autocomplete="list"
               aria-controls={listId} aria-activedescendant={matches[active] ? `${listId}-${active}` : undefined}
-              aria-label={mode === "files" ? "按名称查找文件" : "在工作区搜索内容"}
-              placeholder={mode === "files" ? "输入文件名、路径或路径:行号" : "输入文字"}
+              aria-label={isAttach ? "选择要添加到对话参考的文件" : mode === "files" ? "按名称查找文件" : "在工作区搜索内容"}
+              placeholder={isAttach ? "输入文件名或路径，添加到对话参考" : mode === "files" ? "输入文件名、路径或路径:行号" : "输入文字"}
               value={query} maxLength={200} onKeyDown={navigate}
               onChange={(event) => { setQuery(event.target.value); setMatches([]); setActive(0); }}
               className="mx-3 my-3 min-h-11 rounded-[10px] border border-separator bg-surface px-3 outline-none focus:border-accent" />

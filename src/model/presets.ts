@@ -13,23 +13,15 @@ export interface Preset {
 export const PRESETS: Preset[] = [
   {
     id: "develop",
-    label: "开发项目",
+    label: "Agent",
     mode: "project",
     autonomy: "decide",
     writePolicy: "code",
     defaultTab: "brief",
   },
   {
-    id: "patch",
-    label: "小补丁",
-    mode: "single",
-    autonomy: "act",
-    writePolicy: "code",
-    defaultTab: "artifact",
-  },
-  {
     id: "review",
-    label: "只读审查",
+    label: "Plan",
     mode: "single",
     autonomy: "ask",
     writePolicy: "none",
@@ -37,7 +29,7 @@ export const PRESETS: Preset[] = [
   },
   {
     id: "explain",
-    label: "写说明",
+    label: "Explain",
     mode: "single",
     autonomy: "decide",
     writePolicy: "docs",
@@ -45,12 +37,20 @@ export const PRESETS: Preset[] = [
   },
   {
     id: "academic",
-    label: "学术讨论",
+    label: "Discussion",
     mode: "project",
     autonomy: "ask",
     writePolicy: "docs",
     defaultTab: "brief",
     domainId: "pcb",
+  },
+  {
+    id: "patch",
+    label: "Patch",
+    mode: "single",
+    autonomy: "act",
+    writePolicy: "code",
+    defaultTab: "artifact",
   },
 ];
 

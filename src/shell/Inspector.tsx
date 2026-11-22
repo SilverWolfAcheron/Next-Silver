@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useSilver } from "../state/SilverContext";
+import { useSilverStore } from "../state/silverStore";
 import type { InspectorTab, Thread } from "../model/types";
 import { BriefView } from "../inspector/BriefView";
 import { ProgressView } from "../inspector/ProgressView";
@@ -15,22 +15,20 @@ const TABS: { id: InspectorTab; label: string }[] = [
 ];
 
 export function Inspector({ embedded = false }: { embedded?: boolean }) {
-  const { currentThread } = useSilver();
+  const currentThread = useSilverStore((s) => s.currentThread);
   if (!currentThread) return null;
   if (!embedded && !currentThread.inspectorOpen) return null;
   return <ThreadInspector key={currentThread.id} thread={currentThread} embedded={embedded} />;
 }
 
 function ThreadInspector({ thread, embedded = false }: { thread: Thread; embedded?: boolean }) {
-  const {
-    dispatch,
-    updateBrief,
-    retryRun,
-    promoteThread,
-    patchFinding,
-    decideFile,
-    acceptFile,
-  } = useSilver();
+  const dispatch = useSilverStore((s) => s.dispatch);
+  const updateBrief = useSilverStore((s) => s.updateBrief);
+  const retryRun = useSilverStore((s) => s.retryRun);
+  const promoteThread = useSilverStore((s) => s.promoteThread);
+  const patchFinding = useSilverStore((s) => s.patchFinding);
+  const decideFile = useSilverStore((s) => s.decideFile);
+  const acceptFile = useSilverStore((s) => s.acceptFile);
   const [selectedRunId, setSelectedRunId] = useState<string>();
   const [selectedArtifactId, setSelectedArtifactId] = useState<string>();
   const preset = getPreset(thread.presetId);
@@ -52,7 +50,7 @@ function ThreadInspector({ thread, embedded = false }: { thread: Thread; embedde
   return (
     <aside
       aria-label="检查器"
-      className={`flex h-full max-w-full shrink-0 flex-col bg-canvas ${embedded ? "w-full" : "w-[320px] border-l border-separator"}`}
+      className={`flex h-full max-w-full shrink-0 flex-col ${embedded ? "w-full bg-surface" : "w-[320px] border-l border-separator bg-canvas"}`}
     >
       {!embedded && <div className="flex items-center gap-2 px-4 pt-4 pb-2">
         <div className="flex flex-1 overflow-hidden rounded-[10px] border border-separator bg-group" aria-label="检查器页面" role="group">
@@ -137,7 +135,7 @@ function ThreadInspector({ thread, embedded = false }: { thread: Thread; embedde
 
 function EmptyPane({ text }: { text: string }) {
   return (
-    <div className="flex h-32 items-center justify-center px-4 text-center text-[17px] text-secondary">
+    <div className="flex h-full min-h-40 items-center justify-center px-6 text-center text-[15px] text-secondary">
       {text}
     </div>
   );
