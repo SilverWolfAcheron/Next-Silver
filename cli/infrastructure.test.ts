@@ -1,13 +1,15 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { test } from "node:test";
 import { checkName, runCheck } from "./check.ts";
 import { connectEndpoint, endpointUrl, loadState, readEndpoint, saveStateSync, serve } from "./host.ts";
+import type { RunningHost } from "./host.ts";
+import { noProxyList, runtimeEnvironment } from "./proxy.ts";
 import { exportThreads, importThreads } from "../src/agent-core/localData.ts";
 import type { Thread } from "../src/agent-core/types.ts";
 import {
@@ -229,6 +231,41 @@ test("desktop backups preserve iteration history without exporting or restarting
   assert.equal(read.messages[0].confirm, undefined);
   assert.equal(read.queuedMessages, undefined);
   assert.equal(read.messages[1].text, "仍在等待的输入");
+});
+
+test("reconnecting replaces a host left behind by an older runtime build", () => fixture(async (_, dataDir) => {
+  let stopped = false;
+  const runtime = {
+    getState: () => ({ count: 0 }),
+    action: () => null,
+    shutdown() { stopped = true; },
+  };
+  const host = await serve({ runtime });
+  let fresh: RunningHost | undefined;
+  try {
+    const endpointPath = join(dataDir, "endpoint.json");
+    const past = new Date("2020-01-01T00:00:00Z");
+    await utimes(endpointPath, past, past);
+    assert.equal(await connectEndpoint(), undefined);
+    assert.equal(stopped, true);
+    fresh = await serve({ runtime });
+    assert.notEqual(fresh.endpoint.token, host.endpoint.token);
+  } finally {
+    await fresh?.close();
+    await host.close();
+  }
+}));
+
+test("runtime environment lets Node fetch honor system proxies without breaking loopback", () => {
+  assert.equal(runtimeEnvironment({}).NODE_USE_ENV_PROXY, "1");
+  assert.equal(runtimeEnvironment({ NODE_USE_ENV_PROXY: "0" }).NODE_USE_ENV_PROXY, "0");
+  assert.equal(runtimeEnvironment({ PATH: "fixture" }).PATH, "fixture");
+  const inherited = runtimeEnvironment({ NO_PROXY: "example.com", no_proxy: "example.com" });
+  assert.equal(inherited.no_proxy, undefined);
+  assert.equal(inherited.NO_PROXY, "example.com,localhost,127.0.0.1,::1");
+  assert.equal(runtimeEnvironment({ no_proxy: "example.com" }).NO_PROXY, "example.com,localhost,127.0.0.1,::1");
+  assert.equal(noProxyList(undefined), "localhost,127.0.0.1,::1");
+  assert.equal(noProxyList("LOCALHOST, 127.0.0.1 ,, internal"), "LOCALHOST,127.0.0.1,internal,::1");
 });
 
 test("CLI executes only the allowed package checks in the bound folder", () => fixture(async (directory) => {

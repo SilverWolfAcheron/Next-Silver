@@ -96,6 +96,38 @@ impl DesktopRuntime {
         false
     }
 
+    fn endpoint_is_current(&self, app: &AppHandle) -> bool {
+        let Ok((_, entry, _)) = runtime_paths(app) else {
+            return true;
+        };
+        let Ok(descriptor) = fs::metadata(self.directory.join("endpoint.json"))
+            .and_then(|metadata| metadata.modified())
+        else {
+            return true;
+        };
+        let Ok(runtime) = fs::metadata(&entry).and_then(|metadata| metadata.modified()) else {
+            return true;
+        };
+        descriptor >= runtime
+    }
+
+    async fn stop_stale(&self, endpoint: &Endpoint) {
+        let _ = self
+            .client
+            .post(endpoint.url("/shutdown"))
+            .bearer_auth(&endpoint.token)
+            .timeout(Duration::from_secs(2))
+            .send()
+            .await;
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            if !self.ready(endpoint).await {
+                return;
+            }
+            tokio::time::sleep(STARTUP_RETRY).await;
+        }
+    }
+
     async fn ensure_endpoint(&self, app: &AppHandle) -> Result<Endpoint, String> {
         if self.is_quitting() {
             return Err("DESKTOP_EXITING".into());
@@ -106,8 +138,13 @@ impl DesktopRuntime {
         }
         if let Some(endpoint) = self.read_endpoint().await {
             if self.ready(&endpoint).await {
-                *cached = Some(endpoint.clone());
-                return Ok(endpoint);
+                if self.endpoint_is_current(app) {
+                    *cached = Some(endpoint.clone());
+                    return Ok(endpoint);
+                }
+                // The descriptor predates the runtime on disk, so the surviving
+                // host came from an older build and cannot serve this UI.
+                self.stop_stale(&endpoint).await;
             }
         }
         if self.is_quitting() {
@@ -219,39 +256,75 @@ impl DesktopRuntime {
     }
 }
 
-fn spawn_runtime(app: &AppHandle, directory: &Path) -> Result<std::process::Child, String> {
+fn runtime_paths(app: &AppHandle) -> Result<(PathBuf, PathBuf, Option<PathBuf>), String> {
     let resources = app
         .path()
         .resolve("desktop-runtime", BaseDirectory::Resource)
         .map_err(|_| "DESKTOP_RUNTIME_LOCATE_FAILED".to_owned())?;
-    let (node, entry, npm) = if cfg!(debug_assertions) {
+    if cfg!(debug_assertions) {
         let project = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
         let path = env::var_os("SILVER_NODE").map(PathBuf::from);
         let npm = path
             .as_deref()
             .and_then(Path::parent)
             .map(|path| path.join("node_modules/npm/bin/npm-cli.js"));
-        (
+        return Ok((
             path.unwrap_or_else(|| PathBuf::from("node.exe")),
             project.join("dist-cli/silver.mjs"),
             npm,
-        )
+        ));
+    }
+    let resources = if resources.join("silver.mjs").is_file() {
+        resources
     } else {
-        let resources = if resources.join("silver.mjs").is_file() {
-            resources
-        } else {
-            env::current_exe()
-                .ok()
-                .and_then(|exe| exe.parent().map(|folder| folder.join("desktop-runtime")))
-                .filter(|folder| folder.join("silver.mjs").is_file())
-                .unwrap_or(resources)
-        };
-        (
-            resources.join("node.exe"),
-            resources.join("silver.mjs"),
-            Some(resources.join("node_modules/npm/bin/npm-cli.js")),
-        )
+        env::current_exe()
+            .ok()
+            .and_then(|exe| exe.parent().map(|folder| folder.join("desktop-runtime")))
+            .filter(|folder| folder.join("silver.mjs").is_file())
+            .unwrap_or(resources)
     };
+    Ok((
+        resources.join("node.exe"),
+        resources.join("silver.mjs"),
+        Some(resources.join("node_modules/npm/bin/npm-cli.js")),
+    ))
+}
+
+// Node's fetch ignores HTTP(S)_PROXY unless the process starts with
+// NODE_USE_ENV_PROXY, but users behind a proxy expect provider requests to take
+// the same route as their browser. Loopback stays bypassed so the CLI sidecar
+// keeps talking to its host over 127.0.0.1 instead of through the proxy.
+fn apply_proxy_environment(command: &mut Command) {
+    if env::var_os("NODE_USE_ENV_PROXY").is_none() {
+        command.env("NODE_USE_ENV_PROXY", "1");
+    }
+    let configured = env::var("NO_PROXY")
+        .or_else(|_| env::var("no_proxy"))
+        .unwrap_or_default();
+    command
+        .env_remove("no_proxy")
+        .env("NO_PROXY", merged_no_proxy(&configured));
+}
+
+fn merged_no_proxy(configured: &str) -> String {
+    let mut entries: Vec<String> = configured
+        .split(',')
+        .map(|entry| entry.trim().to_owned())
+        .filter(|entry| !entry.is_empty())
+        .collect();
+    for loopback in ["localhost", "127.0.0.1", "::1"] {
+        if !entries
+            .iter()
+            .any(|entry| entry.eq_ignore_ascii_case(loopback))
+        {
+            entries.push(loopback.to_owned());
+        }
+    }
+    entries.join(",")
+}
+
+fn spawn_runtime(app: &AppHandle, directory: &Path) -> Result<std::process::Child, String> {
+    let (node, entry, npm) = runtime_paths(app)?;
     if !entry.is_file() {
         return Err("DESKTOP_RUNTIME_ENTRY_MISSING".into());
     }
@@ -272,6 +345,7 @@ fn spawn_runtime(app: &AppHandle, directory: &Path) -> Result<std::process::Chil
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::from(log));
+    apply_proxy_environment(&mut command);
     if let Some(npm) = npm {
         command.env("SILVER_NPM_CLI", dunce::simplified(&npm));
     }
