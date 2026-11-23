@@ -1,22 +1,32 @@
-import { listWorkspace, readWorkspaceFile, searchWorkspaceText, workspaceErrorText } from "./workspace";
-import { AppError, ERROR_CODES, extractErrorCode } from "../src/agent-core/errors";
-import { modelRecord, modelString } from "../src/agent-core/session";
-import type { ModelMessage } from "../src/agent-core/session";
+import { listWorkspace, readWorkspaceFile, workspaceErrorText } from "./workspace.ts";
+import { CODING_TOOL_LIMITS } from "../src/constants/codingTools.ts";
+import type { CodingReadWindow, CodingSearchResult, CodingToolBase } from "../src/types/codingTools.ts";
+import type { CodingProject } from "../src/types/codingProject.ts";
+import type { CodingSymbolMatch, CodingSymbolResult, CodingSymbolOptions } from "../src/types/codingSymbols.ts";
+import { assertCodingReadPath, canReadCodingPath, codingReadWindow } from "./codingRead.ts";
+import { searchCodingText } from "./codingSearch.ts";
+import { discoverCodingProject } from "./codingProject.ts";
+import { findCodingSymbols } from "./codingSymbols.ts";
+import { inspectChecks } from "./check.ts";
+import { AppError, ERROR_CODES, extractErrorCode } from "../src/agent-core/errors.ts";
+import { modelRecord, modelString } from "../src/agent-core/session.ts";
+import type { ModelMessage } from "../src/agent-core/session.ts";
 import type {
   ChatMessage,
   Thread,
   WorkspaceEntry,
   WorkspaceSummary,
-  WorkspaceTextMatch,
 } from "../src/agent-core/types";
 
-type ToolResultItem =
-  | { name: string; path: string; entries: WorkspaceEntry[] }
-  | { name: string; path: string; body: string }
-  | { name: string; query: string; matches: WorkspaceTextMatch[] }
-  | { name: string; path: string; error: string };
-
-const MAX_CHARS: number = 32_000;
+type ToolResultItem = CodingToolBase & (
+  | { entries: WorkspaceEntry[] }
+  | CodingReadWindow
+  | CodingSearchResult
+  | { project: CodingProject }
+  | { symbols: CodingSymbolResult }
+  | { checks: Awaited<ReturnType<typeof inspectChecks>> }
+  | { error: string }
+);
 
 function excerpt(text: string, limit: number): string {
   return text.length <= limit ? text : text.slice(0, limit) + "\n[后续内容已截断]";
@@ -38,11 +48,11 @@ export async function attachmentContext(thread: Thread, messageId?: string): Pro
   if (!workspace || (message.workspaceId && workspace.id !== message.workspaceId)) {
     throw new AppError(ERROR_CODES.WORKSPACE_ATTACHMENT_WORKSPACE_MISMATCH);
   }
-  const paths: string[] = message.attachments.slice(0, 8);
+  const paths: string[] = message.attachments.slice(0, CODING_TOOL_LIMITS.attachmentFiles);
   const settled: PromiseSettledResult<{ path: string; body: string; }>[] = await Promise.allSettled(
     paths.map(async (path: string): Promise<{ path: string; body: string; }> => {
       try {
-        return { path, body: excerpt(await readWorkspaceFile(workspace, path), Math.floor(MAX_CHARS / paths.length)) };
+        return { path, body: excerpt(await readWorkspaceFile(workspace, path), Math.floor(CODING_TOOL_LIMITS.resultChars / paths.length)) };
       } catch (error) {
         throw new AppError(ERROR_CODES.WORKSPACE_ATTACHMENT_READ_FAILED, {
           params: {
@@ -74,16 +84,41 @@ export async function toolContext(thread: Thread, tools: unknown[], signal: Abor
       try {
         signal.throwIfAborted();
         if (!workspace) throw new AppError(ERROR_CODES.WORKSPACE_NOT_BOUND);
+        assertCodingReadPath(path);
         switch (name) {
           case "list":
-            return { name, path, entries: (await listWorkspace(workspace, path)).slice(0, 120) };
+            return {
+              name, path, entries: (await listWorkspace(workspace, path))
+                .filter((entry: WorkspaceEntry): boolean => canReadCodingPath(entry.path)).slice(0, CODING_TOOL_LIMITS.listEntries),
+            };
           case "read":
-            return { name, path, body: excerpt(await readWorkspaceFile(workspace, path), Math.floor(MAX_CHARS / requested.length)) };
+            return {
+              name, path, ...codingReadWindow(await readWorkspaceFile(workspace, path),
+                { startLine: fields.startLine, endLine: fields.endLine },
+                Math.floor(CODING_TOOL_LIMITS.resultChars / requested.length)),
+            };
           case "search": {
-            const query: string = modelString(fields.query);
-            if (!query) throw new AppError(ERROR_CODES.WORKSPACE_SEARCH_QUERY_EMPTY);
-            return { name, query, matches: await searchWorkspaceText(workspace, query, { limit: 24, signal }) };
+            const result: CodingSearchResult = await searchCodingText(workspace, modelString(fields.query), { directory: path, signal });
+            return { name, path, ...result };
           }
+          case "project": {
+            const project: CodingProject = await discoverCodingProject(workspace, { directory: path, signal });
+            return { name, path, project };
+          }
+          case "symbol": {
+            const mode: CodingSymbolOptions["mode"] = fields.mode === "definitions" || fields.mode === "references" ? fields.mode : "all";
+            const symbols: CodingSymbolResult = await findCodingSymbols(workspace, modelString(fields.query), { directory: path, mode, signal });
+            return {
+              name, path, symbols: {
+                ...symbols,
+                truncated: symbols.truncated || symbols.matches.length > CODING_TOOL_LIMITS.navigationItems,
+                matches: symbols.matches.filter((entry: CodingSymbolMatch): boolean => canReadCodingPath(entry.path))
+                  .slice(0, CODING_TOOL_LIMITS.navigationItems),
+              },
+            };
+          }
+          case "checks":
+            return { name, path, checks: await inspectChecks(workspace, { cwd: path, signal }) };
           default:
             throw new AppError(ERROR_CODES.WORKSPACE_TOOL_UNAVAILABLE);
         }

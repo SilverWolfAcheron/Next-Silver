@@ -282,7 +282,7 @@ export function createConversation(deps: ConversationDeps): ConversationService 
                     return iteration;
                   }
                   if (iteration.approval === "apply") {
-                    return { ...iteration, status: "in_progress", note: "等待确认破坏性变更" };
+                    return { ...iteration, status: "in_progress" };
                   }
                   return {
                     ...iteration,
@@ -612,13 +612,19 @@ export function createConversation(deps: ConversationDeps): ConversationService 
         ) {
           break;
         }
+        const checkApproval: boolean = action.phase === "apply" && iteration.stage === "checks";
+        const approvalWorkspace: string | undefined = checkApproval && accepted &&
+          thread.workspace?.id === iteration.checkAwaitingWorkspaceId ? iteration.checkAwaitingWorkspaceId : undefined;
+        const approvalNote: string = checkApproval
+          ? approvalWorkspace ? "已授权运行当前工作区的检查" : "未授权运行项目代码，检查未执行"
+          : accepted ? "已确认，准备应用差异" : "用户停止自迭代";
         const next: Run =
           action.phase === "next"
             ? resolveIterationApproval(run, accepted, iteration.id)
             : {
               ...run,
               status: accepted ? ("in_progress" as const) : ("blocked" as const),
-              note: accepted ? "已确认，准备应用差异" : "用户停止自迭代",
+              note: approvalNote,
               iterations: [
                 ...(run.iterations ?? []).slice(0, -1),
                 {
@@ -626,8 +632,10 @@ export function createConversation(deps: ConversationDeps): ConversationService 
                   approval: undefined,
                   status: accepted ? ("in_progress" as const) : ("blocked" as const),
                   writes: accepted ? iteration.writes : undefined,
-                  stage: accepted ? iteration.stage : ("produce" as const),
-                  note: accepted ? "已确认，准备应用差异" : "用户停止自迭代",
+                  stage: accepted || checkApproval ? iteration.stage : ("produce" as const),
+                  checksApprovedWorkspaceId: approvalWorkspace ?? iteration.checksApprovedWorkspaceId,
+                  checkAwaitingWorkspaceId: undefined,
+                  note: approvalNote,
                 },
               ],
             };

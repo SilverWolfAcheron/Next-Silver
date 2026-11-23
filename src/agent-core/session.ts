@@ -1,3 +1,4 @@
+import { CODING_TOOL_GUIDE } from "../constants/codingTools.ts";
 import type { AppErrorOptions, ErrorCode } from "../types/errors";
 import type { AgentSeat, Artifact, Brief, ChatMessage, Intent, Requirement, Run, Thread, WritePolicy } from "./types";
 import { getDomain } from "./domains/pcb";
@@ -286,6 +287,6 @@ export function resultInstruction(thread: Thread, run?: Run, desktop: boolean = 
     artifactHelp[policy],
     desktop && "差异和文稿只是本轮产物。CLI 会在适用时运行检查，然后独立判断剩余缺口。",
     '先流式给出用户可读正文。随后单独一行输出 <<<SILVER_RESULT>>>，紧接一个 JSON 对象 {"artifacts":[{"kind":"doc|diff|findings","title":"...","body":"..."}],"status":"completed|blocked","note":"..."}。缺少必要材料时 status 为 blocked 并在正文中提一个具体问题。不要在 JSON 外加代码围栏。',
-    thread.workspace && '需要读工作区时，使用同一个结果标记，在 JSON 中提供 tools 请求列表。每次请求最多包含 4 个工具，可以连续多次请求。例如 {"tools":[{"name":"list","path":""},{"name":"read","path":"src/index.ts"},{"name":"search","query":"function main"}]}。收到这些结果后继续工作。路径是相对路径。',
+    desktop && thread.workspace && '需要读工作区时，使用同一个结果标记，在 JSON 中提供 tools 请求列表。例如 {"tools":[{"name":"project","path":""}]}。\n' + CODING_TOOL_GUIDE,
   ].join("\n");
 }

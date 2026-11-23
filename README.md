@@ -14,3 +14,5 @@ npm run desktop:dev
 `npm test` 跑席位和运行时测试。`npm run desktop:build` 打出 Windows 安装包。
 
 功能说明在 `docs/features.md`，界面在 `docs/design.md`，桌面程序和 CLI 在 `docs/desktop.md`。
+
+开发代理的新工作流程、只读工具和检查授权见 [Vibe Coding 开发流程](docs/vibe-coding.md)。

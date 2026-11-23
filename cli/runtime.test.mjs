@@ -52,6 +52,7 @@ test("desktop CLI runs six rounds, reattaches, and resumes active seats without 
   let heldDisconnects = 0;
   let toolReads = 0;
   let checksReachedNextRound = false;
+  let firstDraftRepaired = false;
   let gameError;
   const plan = {
     intent: "运行本机检查并通过修复", outcome: "完成六轮独立缺口",
@@ -118,8 +119,32 @@ test("desktop CLI runs six rounds, reattaches, and resumes active seats without 
         const requested = payload.messages.filter(({ content }) => content.includes("工具结果。以下是工作区数据")).length;
         if (number === 1 && requested < 6) {
           toolReads++;
-          send({ tools: [{ name: requested % 2 ? "read" : "list", path: requested % 2 ? "source.txt" : "" }] });
+          const tools = [
+            { name: "project", path: "" },
+            { name: "symbol", query: "source", mode: "references", path: "" },
+            { name: "checks", path: "" },
+            { name: "list", path: "" },
+            { name: "read", path: "source.txt", startLine: 1, endLine: 1 },
+            { name: "search", query: "independent" },
+          ];
+          if (requested === 1) assert.match(userData, /silver-native-check-fixture/u);
+          if (requested === 3) assert.match(userData, /"available":true/u);
+          if (requested === 5) assert.match(userData, /"startLine":1,"endLine":1/u);
+          send({ tools: [tools[requested]] });
           return;
+        }
+        const isRepair = userData.includes("客户端预检没有通过");
+        if (number === 1 && !isRepair) {
+          send({ status: "completed", summary: "测试过时补丁", findings: [], artifacts: [{
+            kind: "diff", title: "过时的第一份补丁",
+            body: ["--- a/source.txt", "+++ b/source.txt", "@@ -1 +1 @@", "-wrong-base", "+round-1", ""].join("\n"),
+          }] });
+          return;
+        }
+        if (number === 1) {
+          assert.equal(firstDraftRepaired, false, "only one draft repair should occur");
+          assert.match(userData, /stale_hunk/u);
+          firstDraftRepaired = true;
         }
         send({
           status: "completed", summary: `本轮完成 ${number}`, findings: [],
@@ -205,7 +230,19 @@ test("desktop CLI runs six rounds, reattaches, and resumes active seats without 
     select.abort();
     await until(async () => (await thread()).runs[0]?.seats.find(({ id }) => id === "writer")?.status === "completed", "Writer failed after window disconnected");
     assert.equal(toolReads, 6);
+    assert.equal(firstDraftRepaired, true);
     firstHeld();
+    const checkConsent = await until(async () => (await thread()).pendingConfirmation, "Checks ran without explicit consent");
+    assert.equal(checkConsent.kind, "iteration");
+    assert.equal((await thread()).runs[0].iterations[0].stage, "checks");
+    await assert.rejects(readFile(join(workspace, "checks.log"), "utf8"), { code: "ENOENT" });
+    await action("resolveConfirmation", threadId, checkConsent.messageId, false);
+    assert.equal((await thread()).runs[0].status, "blocked");
+    await assert.rejects(readFile(join(workspace, "checks.log"), "utf8"), { code: "ENOENT" });
+    await action("retryRun", threadId, (await thread()).runs[0].id);
+    const retriedCheck = await until(async () => (await thread()).pendingConfirmation, "Retry did not re-request check consent");
+    assert.notEqual(retriedCheck.messageId, checkConsent.messageId);
+    await action("resolveConfirmation", threadId, retriedCheck.messageId, true);
     await until(async () => secondHeld && (await thread()).runs[0]?.seats.find(({ id }) => id === "writer")?.status === "completed", "Second round did not run");
     assert.equal(checksReachedNextRound, true);
     const beforeShutdown = await thread();

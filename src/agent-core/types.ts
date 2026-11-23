@@ -57,6 +57,8 @@ export interface Iteration {
   approval?: "apply" | "next";
   attempt?: string;
   checkSequence?: number;
+  checksApprovedWorkspaceId?: string;
+  checkAwaitingWorkspaceId?: string;
   replyId?: string;
 }
 

@@ -1,7 +1,5 @@
-import { applyDiff, diffNeedsConfirmation, diffPolicyError, mergeDiffArtifacts, parseDiff } from "../src/utils/diff";
-import type { FileChange } from "../src/types/diff";
-import { AppError, ERROR_CODES, extractErrorCode, serializeErrorCode } from "../src/agent-core/errors";
-import type { ErrorCode, ParsedErrorCode } from "../src/types/errors";
+import { mergeDiffArtifacts } from "../src/utils/diff";
+import { AppError, ERROR_CODES, serializeErrorCode } from "../src/agent-core/errors";
 import {
   blockIteration, buildJudgmentInput, createIteration, nextIterationDecision, parseIterationJudgment,
 } from "../src/agent-core/iterate";
@@ -22,12 +20,13 @@ import type {
   WritePolicy,
 } from "../src/agent-core/types";
 import type { ModelClient } from "../src/agent-core/provider/client";
-import { checkLabel, runCheck } from "./check";
-import type { CheckName, CheckResult } from "./check";
+import { checkLabel, inspectChecks, runCheck } from "./check";
+import type { CheckResult } from "./check";
 import type { RequestJournal } from "./journal";
 import { readWorkspaceFileIfExists, writeWorkspaceFile } from "./workspace";
 
-const checks: CheckName[] = ["test", "typecheck", "build"];
+import { preflightCodingChanges, verifyCodingWriteSnapshot } from "./codingPreflight";
+import { CHECK_AUTHORIZATION } from "../src/constants/codingChecks";
 interface Request { model: string; signal: AbortSignal }
 type Edits = (update: (thread: Thread) => Thread) => void;
 type RunEdits = (update: (run: Run) => Run) => void;
@@ -136,46 +135,31 @@ export function createIterationEngine(journal: RequestJournal): IterationEngine 
         const products: Artifact[] | undefined = await produce(thread, run, journal.model(operation, client, thread.mode === "single" && iteration.index === 1));
         request.signal.throwIfAborted();
         if (!products) return;
-        const writes: NonNullable<Iteration["writes"]> = [];
-        let destructive: boolean = false;
-        if (workspace && policy === "code") {
-          const paths: Set<string> = new Set();
-          for (const artifact of products.filter(({ kind }: Artifact): boolean => kind === "diff")) {
-            for (const item of parseDiff(artifact.body)) {
-              if (!item.change) {
-                const parsed: ParsedErrorCode = extractErrorCode(item.error, ERROR_CODES.DIFF_APPLY_FAILED);
-                throw new NeededInput(parsed.code, { params: parsed.params });
-              }
-              const change: FileChange = item.change;
-              const canonical: string = change.path.normalize("NFC").toLowerCase();
-              if (paths.has(canonical)) throw new NeededInput(ERROR_CODES.ITERATION_CONFLICTING_DIFF);
-              paths.add(canonical);
-              const restriction: ErrorCode | undefined = diffPolicyError(change, policy);
-              if (restriction) throw new NeededInput(restriction);
-              const before: string | null = await readWorkspaceFileIfExists(workspace, change.path, { allowMissingParent: change.operation === "create" });
-              request.signal.throwIfAborted();
-              writes.push({ path: change.path, before, after: applyDiff(change, before), artifactId: artifact.id });
-              destructive ||= diffNeedsConfirmation(change) || /(?:^|\/)package\.json$/iu.test(change.path);
-            }
-          }
-        }
-        const needsApproval: boolean = destructive || writes.length > 20;
+        const review: Awaited<ReturnType<typeof preflightCodingChanges>> | undefined = workspace && policy === "code"
+          ? await preflightCodingChanges(workspace, products, { policy, signal: request.signal }) : undefined;
+        const invalid: NonNullable<typeof review>["issues"][number] | undefined = review?.issues.find(
+          (issue: NonNullable<typeof review>["issues"][number]): boolean => issue.severity === "error"
+        );
+        if (invalid) throw new NeededInput(invalid.code, { params: invalid.params ?? (invalid.path ? { path: invalid.path } : undefined) });
+        const writes: NonNullable<Iteration["writes"]> = review?.writes ?? [];
+        const needsApproval: boolean = review?.status === "needs_confirmation";
+        const approvalNote: string = `本轮拟写入 ${writes.length} 个文件。变更包含删除、锁文件、项目脚本配置或大批量修改。`;
         edit((current: Thread): Thread => ({
           ...current, inspectorOpen: true,
           artifacts: mergeDiffArtifacts(current.artifacts, products),
           runs: current.runs.map((entry: Run): Run => entry.id === runId ? {
             ...entry,
-            note: needsApproval ? "等待确认破坏性变更" : "本轮产物已保存",
+            note: needsApproval ? approvalNote : "本轮产物已保存",
             iterations: (entry.iterations ?? []).map((item: Iteration): Iteration => item.id === iteration.id ? {
               ...item, artifactIds: products.map(({ id }: Artifact): string => id), writes, stage: "apply",
               approval: needsApproval ? "apply" : undefined,
-              note: needsApproval ? "等待确认破坏性变更" : "本轮产物已保存",
+              note: needsApproval ? approvalNote : "本轮产物已保存",
             } : item),
           } : entry),
         }));
         journal.clear(operation);
         if (needsApproval) {
-          approve(iteration.id, "apply", `本轮拟写入 ${writes.length} 个文件。变更包含删除、锁文件、项目脚本配置或大批量修改。`);
+          approve(iteration.id, "apply", approvalNote);
           return;
         }
         continue;
@@ -185,12 +169,24 @@ export function createIterationEngine(journal: RequestJournal): IterationEngine 
         const process = async (): Promise<void> => {
           request.signal.throwIfAborted();
           if (workspace && stage === "apply") {
-            for (const write of iteration.writes ?? []) {
-              request.signal.throwIfAborted();
-              const decision: "accepted" | "rejected" | undefined = get().thread.artifacts.find(({ id }: Artifact): boolean => id === write.artifactId)?.fileDecisions?.[write.path];
+            const writes: NonNullable<Iteration["writes"]> = iteration.writes ?? [];
+            const assertAccepted = (write: NonNullable<Iteration["writes"]>[number]): void => {
+              const decision: "accepted" | "rejected" | undefined = get().thread.artifacts.find(
+                ({ id }: Artifact): boolean => id === write.artifactId
+              )?.fileDecisions?.[write.path];
               if (decision === "rejected") {
                 throw new NeededInput(ERROR_CODES.ITERATION_DIFF_REJECTED, { params: { path: write.path } });
               }
+            };
+            for (const write of writes) assertAccepted(write);
+            const snapshot: Awaited<ReturnType<typeof verifyCodingWriteSnapshot>> = await verifyCodingWriteSnapshot(
+              workspace, writes, { signal: request.signal, allowAlreadyApplied: true }
+            );
+            const issue: typeof snapshot.issues[number] | undefined = snapshot.issues[0];
+            if (issue) throw new NeededInput(issue.code, { params: issue.params });
+            for (const write of writes) {
+              request.signal.throwIfAborted();
+              assertAccepted(write);
               const before: string | null = await readWorkspaceFileIfExists(workspace, write.path, { allowMissingParent: write.before === null });
               request.signal.throwIfAborted();
               if (before !== write.after) {
@@ -212,9 +208,27 @@ export function createIterationEngine(journal: RequestJournal): IterationEngine 
             updateRound((round: Iteration): Iteration => ({ ...round, writes: undefined, stage: "checks", note: "本轮差异已应用" }));
           }
           if (useChecks && workspace) {
-            const saved: number = get().run.iterations?.at(-1)?.checkSequence ?? 0;
-            for (let index: number = saved; index < checks.length; index++) {
-              const check: CheckName = checks[index];
+            const availability: Awaited<ReturnType<typeof inspectChecks>> = await inspectChecks(workspace, { signal: request.signal });
+            const available: typeof availability = availability.filter(
+              (entry: typeof availability[number]): boolean => entry.available
+            );
+            const currentRun: Run = get().run;
+            const trusted: boolean = Boolean(currentRun.iterations?.some(
+              (round: Iteration): boolean => round.checksApprovedWorkspaceId === workspace.id
+            ));
+            if (available.length && !trusted) {
+              const note: string = CHECK_AUTHORIZATION;
+              updateRound((round: Iteration): Iteration => ({
+                ...round, approval: "apply", checkAwaitingWorkspaceId: workspace.id, note,
+              }));
+              approve(iteration.id, "apply", note);
+              return;
+            }
+            const saved: number = currentRun.iterations?.at(-1)?.checkSequence ?? 0;
+            for (let index: number = saved; index < availability.length; index++) {
+              const plan: typeof availability[number] = availability[index];
+              const check: typeof plan.check = plan.check;
+              if (!plan.available) continue;
               request.signal.throwIfAborted();
               updateRound((round: Iteration): Iteration => ({ ...round, note: `正在运行 ${checkLabel(check)}` }));
               let result: Pick<CheckResult, "command" | "exitCode" | "output">;

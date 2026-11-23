@@ -20,6 +20,7 @@ import {
   requestWorkspaceAccess, searchWorkspaceFiles, searchWorkspaceText, subscribeWorkspaceChanges,
   writeWorkspaceFile, lookupWorkspace,
 } from "./workspace";
+import { isProtectedCodingPath } from "./codingPreflightPaths";
 import { checkName, runCheck } from "./check";
 import { readWorkspaceGitDiff } from "./gitDiff";
 import {
@@ -202,6 +203,7 @@ export function createRuntime(
     if (artifact.fileDecisions?.[path] === "rejected") throw new AppError(ERROR_CODES.DIFF_FILE_REJECTED);
     const change: FileChange | undefined = parseDiff(artifact.body).find((entry: DiffFile): boolean => entry.change?.path === path)?.change;
     if (!change) throw new AppError(ERROR_CODES.DIFF_APPLY_FAILED);
+    if (isProtectedCodingPath(change.path)) throw new AppError(ERROR_CODES.WORKSPACE_INVALID_PATH);
     const restriction: ErrorCode | undefined = diffPolicyError(change, getPreset(thread.presetId).writePolicy);
     if (restriction) throw new AppError(restriction);
     if (diffNeedsConfirmation(change) && !confirmed) throw new AppError(ERROR_CODES.DIFF_CONFIRMATION_REQUIRED);

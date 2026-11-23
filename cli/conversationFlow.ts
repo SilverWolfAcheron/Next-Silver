@@ -14,12 +14,10 @@ import {
   identifiesRevision,
   modelString,
   modelStrings,
-  readArtifacts,
   readBrief,
   readIntent,
   readRuns,
   requirementSequence,
-  resultInstruction,
   SessionError,
   streamResult,
 } from "../src/agent-core/session";
@@ -36,7 +34,6 @@ import type {
 } from "../src/agent-core/types";
 import {
   assistant,
-  insertReply,
   INTAKE_SCHEMA,
   isTransientProviderError,
   mergeInspectorBriefEdits,
@@ -47,8 +44,10 @@ import type {
   ConversationKernel,
   ModelRequest,
 } from "./conversationHelpers";
-import { iterationContext } from "./iterations";
 import { toolContext } from "./workspaceContext";
+import { createCodingToolLoop } from "./codingToolLoop";
+import { CODING_TOOL_GUIDE } from "../src/constants/codingTools";
+import { produceCodingRound } from "./codingRound";
 
 export interface ConversationFlow {
   proposeBrief: (thread: Thread, brief: Brief, source: string) => void;
@@ -207,7 +206,7 @@ export function createConversationFlow(kernel: ConversationKernel): Conversation
           intent: "steer",
           summary:
             current.workspace && getPreset(current.presetId).writePolicy === "code"
-              ? "确认后，CLI 会在工作区应用本轮普通差异并运行项目的测试、类型检查和构建脚本。"
+              ? "确认后，CLI 会应用本轮普通差异。首次运行此工作项的本地检查前会另行确认。"
               : "确认简报后开始派发工作项。",
           acceptLabel: "确认简报",
           declineLabel: "继续修改",
@@ -251,7 +250,7 @@ export function createConversationFlow(kernel: ConversationKernel): Conversation
               ? `只补修订后的差额，包括当前仍需接替的已暂停工作项；不重复已完成或仍有效的工作项。已有工作项：${JSON.stringify(existingRuns)}`
               : "",
             thread.workspace
-              ? '需要确认实际文件范围时，先单独返回 {"tools":[{"name":"list","path":""},{"name":"search","query":"关键词"}]}，也可使用 read。'
+              ? '需要确认实际文件范围时，先单独返回 {"tools":[{"name":"project","path":""}]}。' + "\n" + CODING_TOOL_GUIDE
               : "",
             '只返回 JSON {"reply":"...","brief":{},"runs":[{"title":"...","dependsOn":["R1"],"note":"...","parallelGroup":"g1","seats":[{"id":"a","title":"...","scope":["src/example.ts"]}]}]}。',
           ]
@@ -259,11 +258,15 @@ export function createConversationFlow(kernel: ConversationKernel): Conversation
             .join("\n")
         );
         prompt.push(...(await attachedFiles(thread, messageId || undefined)));
-        let response: Awaited<ReturnType<typeof askModel>> = await askModel(client, request, prompt);
+        const loop: ReturnType<typeof createCodingToolLoop> = createCodingToolLoop({
+          signal: request.signal,
+          execute: (tools: unknown[], signal: AbortSignal): Promise<ModelMessage> => toolContext(thread, tools, signal),
+          limitError: (): SessionError => new SessionError(ERROR_CODES.SESSION_TOOL_LIMIT_EXCEEDED),
+        });
+        let response: Awaited<ReturnType<typeof askModel>> = await askModel(client, request, loop.messages(prompt));
         while (Array.isArray(response.tools) && response.tools.length) {
-          request.signal.throwIfAborted();
-          prompt.push(await toolContext(thread, response.tools, request.signal));
-          response = await askModel(client, request, prompt);
+          await loop.accept(response.tools);
+          response = await askModel(client, request, loop.messages(prompt));
         }
         if (request.signal.aborted) return;
         const current: Thread | undefined = find(threadId);
@@ -302,14 +305,16 @@ export function createConversationFlow(kernel: ConversationKernel): Conversation
 
   function askIteration(options: AskIterationOptions): void {
     const { threadId, runId, iterationId, phase, summary }: AskIterationOptions = options;
-    if (find(threadId)?.pendingConfirmation) return;
+    const thread: Thread | undefined = find(threadId);
+    if (!thread || thread.pendingConfirmation) return;
+    const stage: Iteration["stage"] = thread.runs.find((run: Run): boolean => run.id === runId)?.iterations?.at(-1)?.stage;
     confirm({
       threadId,
       action: { kind: "iteration", runId, iterationId, phase },
       labels: {
         intent: "steer",
         summary,
-        acceptLabel: phase === "apply" ? "确认应用差异" : "继续下一轮",
+        acceptLabel: phase === "next" ? "继续下一轮" : stage === "checks" ? "允许运行检查" : "确认应用差异",
         declineLabel: "停在这里",
       },
     });
@@ -382,68 +387,7 @@ export function createConversationFlow(kernel: ConversationKernel): Conversation
                 | undefined = await seated.executeRun({ thread: current, run: item, client, request });
               return result?.artifacts;
             }
-            const prompt: ModelMessage[] = [
-              ...conversationPrompt(
-                current,
-                `${resultInstruction(current, item, true)}\n当前轮次：${item.iterations?.at(-1)?.index}。轮次目标：${item.iterations?.at(-1)?.title}`,
-                item.messageId
-              ),
-              ...iterationContext(current, item),
-              ...(await attachedFiles(current, item.messageId || undefined)),
-            ];
-            const round: Iteration | undefined = item.iterations?.at(-1);
-            let replyId: string | undefined = round?.replyId;
-            if (current.mode === "single" && round?.index === 1 && !replyId) {
-              const reply: ChatMessage = assistant("");
-              replyId = reply.id;
-              edit(threadId, (state: Thread): Thread => ({
-                ...state,
-                messages: insertReply(state.messages, reply, item.messageId),
-                runs: state.runs.map((entry: Run): Run =>
-                  entry.id === item.id
-                    ? {
-                      ...entry,
-                      iterations: entry.iterations?.map((iteration: Iteration): Iteration =>
-                          iteration.id === round.id ? { ...iteration, replyId: reply.id } : iteration
-                      ),
-                    }
-                    : entry
-                ),
-              }));
-            }
-            let firstDelta: boolean = true;
-            for (;;) {
-              request.signal.throwIfAborted();
-              const reply: Awaited<ReturnType<typeof streamResult>> = await streamResult({
-                client: model,
-                request,
-                messages: prompt,
-                structured: true,
-                onDelta: (delta: string): void => {
-                  if (!replyId || request.signal.aborted) return;
-                  editMessage(threadId, replyId, (entry: ChatMessage): ChatMessage => ({
-                    ...entry,
-                    text: (firstDelta ? "" : entry.text) + delta,
-                  }));
-                  firstDelta = false;
-                },
-              });
-              if (!Array.isArray(reply.tools) || !reply.tools.length) {
-                const artifacts: Artifact[] = readArtifacts(reply.artifacts, current, item.id);
-                const note: string = modelString(reply.note);
-                if (note && !artifacts.length) {
-                  artifacts.push({
-                    id: crypto.randomUUID(),
-                    kind: "doc",
-                    title: "本轮说明",
-                    body: note,
-                    runId: item.id,
-                  });
-                }
-                return artifacts;
-              }
-              prompt.push(await toolContext(current, reply.tools, request.signal));
-            }
+            return produceCodingRound({ current, item, model, request, callbacks: { edit, editMessage, attachedFiles } });
           },
         });
         if (blocked) append(threadId, assistant(blocked));
@@ -633,7 +577,7 @@ export function createConversationFlow(kernel: ConversationKernel): Conversation
         action: { kind: "run", runId: work.id },
         labels: {
           intent: "steer",
-          summary: "确认后，CLI 会在工作区应用普通差异并运行项目检查。",
+          summary: "确认后，CLI 会在工作区应用普通差异；运行本地检查需单独授权。",
           acceptLabel: "开始工作",
           declineLabel: "暂缓",
         },

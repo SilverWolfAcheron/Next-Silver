@@ -62,6 +62,8 @@ export function isIteration(value: unknown): value is Iteration {
     (value.stage === undefined || value.stage === "produce" || value.stage === "apply" || value.stage === "checks" || value.stage === "judge") &&
     (value.approval === undefined || value.approval === "apply" || value.approval === "next") &&
     (value.attempt === undefined || isText(value.attempt)) &&
+    (value.checkAwaitingWorkspaceId === undefined || isText(value.checkAwaitingWorkspaceId)) &&
+    (value.checksApprovedWorkspaceId === undefined || isText(value.checksApprovedWorkspaceId)) &&
     (value.checkSequence === undefined || (typeof value.checkSequence === "number" &&
       Number.isSafeInteger(value.checkSequence) && value.checkSequence >= 0)) &&
     (value.writes === undefined || (Array.isArray(value.writes) && value.writes.every((entry: unknown): boolean =>
