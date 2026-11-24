@@ -107,7 +107,7 @@ export function AgentPane({
           />
         )}
       </div>
-      {tab === "chat" && <AgentActivity key={currentThread?.id} />}
+      <AgentActivity key={currentThread?.id} />
       <Composer />
     </aside>
   );

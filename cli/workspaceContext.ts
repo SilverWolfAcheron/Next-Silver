@@ -6,6 +6,9 @@ import type { CodingPluginResult } from "../src/types/codingPlugins.ts";
 import type { CodingToolLoop, CodingToolLoopOptions, CodingToolRequest } from "../src/types/codingToolLoop.ts";
 import { listWorkspace, readWorkspaceFile, workspaceErrorText } from "./workspace.ts";
 import { CODING_TOOL_LIMITS } from "../src/constants/codingTools.ts";
+import { AGENT_TOOL_KINDS } from "../src/constants/modelActivity.ts";
+import type { AgentToolKind, TrackAgentOperation } from "../src/types/modelActivity.ts";
+import { isDiffPath } from "../src/utils/diff.ts";
 import type { CodingReadWindow, CodingSearchResult, CodingToolBase } from "../src/types/codingTools.ts";
 import type { CodingProject } from "../src/types/codingProject.ts";
 import type { CodingSymbolMatch, CodingSymbolResult, CodingSymbolOptions } from "../src/types/codingSymbols.ts";
@@ -82,12 +85,13 @@ export async function attachmentContext(thread: Thread, messageId?: string): Pro
 }
 
 export function createWorkspaceToolLoop(
-  thread: Thread, options: Pick<CodingToolLoopOptions, "signal" | "limits" | "limitError">
+  thread: Thread, options: Pick<CodingToolLoopOptions, "signal" | "limits" | "limitError"> & { track?: TrackAgentOperation }
 ): CodingToolLoop {
   const tasks: CodingTasks = createCodingTasks();
+  const { track, ...loopOptions }: typeof options = options;
   return createCodingToolLoop({
-    ...options,
-    execute: (tools: unknown[], signal: AbortSignal): Promise<ModelMessage> => toolContext({ thread, tasks }, tools, signal),
+    ...loopOptions,
+    execute: (tools: unknown[], signal: AbortSignal): Promise<ModelMessage> => toolContext({ thread, tasks, track }, tools, signal),
     // A snapshot or a previously blocked mutation may be useful again after
     // the plan has changed. Unchanged duplicates still consume no tool work.
     refreshKey: (tool: CodingToolRequest): string | undefined =>
@@ -97,16 +101,16 @@ export function createWorkspaceToolLoop(
 }
 
 async function toolContext(
-  { thread, tasks }: { thread: Thread; tasks: CodingTasks }, tools: unknown[], signal: AbortSignal
+  { thread, tasks, track }: { thread: Thread; tasks: CodingTasks; track?: TrackAgentOperation }, tools: unknown[], signal: AbortSignal
 ): Promise<ModelMessage> {
   const requested: unknown[] = tools.slice(0, 4);
   const workspace: WorkspaceSummary | undefined = thread.workspace;
   const settled: PromiseSettledResult<ToolResultItem>[] = await Promise.allSettled(
-    requested.map(async (raw: unknown): Promise<ToolResultItem> => {
+    requested.map((raw: unknown): Promise<ToolResultItem> => {
       const fields: Record<string, unknown> = modelRecord(raw);
       const name: string = modelString(fields.name);
       const path: string = modelString(fields.path);
-      try {
+      const execute = async (): Promise<ToolResultItem> => {
         signal.throwIfAborted();
         // These task calls are synchronous and therefore dispatch in input order.
         // Read-only plugin/workspace work in the same batch can overlap.
@@ -154,10 +158,13 @@ async function toolContext(
           default:
             throw new AppError(ERROR_CODES.WORKSPACE_TOOL_UNAVAILABLE);
         }
-      } catch (error) {
+      };
+      const kind: AgentToolKind = AGENT_TOOL_KINDS.find((entry: AgentToolKind): boolean => entry === name) ?? "tool";
+      const target: string | undefined = isDiffPath(path) && canReadCodingPath(path) ? path : undefined;
+      return (track ? track({ kind, target }, execute) : execute()).catch((error: unknown): ToolResultItem => {
         signal.throwIfAborted();
         return { name, path, error: workspaceErrorText(error) };
-      }
+      });
     })
   );
   const results: ToolResultItem[] = settled.map((item: PromiseSettledResult<ToolResultItem>): ToolResultItem => {

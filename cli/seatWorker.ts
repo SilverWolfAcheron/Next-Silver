@@ -11,6 +11,7 @@ import { codingDraftRepairMessage } from "./codingDraftRepair";
 import { attachmentContext, createWorkspaceToolLoop } from "./workspaceContext";
 import { iterationContext } from "./iterations";
 import { CODING_TOOL_GUIDE } from "../src/constants/codingTools";
+import type { ModelRequest } from "./conversationHelpers";
 
 const MAX_FINDINGS: number = 20;
 const MAX_ARTIFACTS: number = 20;
@@ -111,7 +112,7 @@ export interface RunSeatOptions {
   run: Run;
   seat: AgentSeat;
   client: ModelClient;
-  request: { model: string; signal: AbortSignal };
+  request: ModelRequest;
   onProgress: (note: string) => void;
 }
 
@@ -215,6 +216,7 @@ export async function runSeat(options: RunSeatOptions): Promise<SeatResult> {
   onProgress(developer ? "正在核对开发发现…" : "正在处理席位范围…");
   const loop: ReturnType<typeof createWorkspaceToolLoop> = createWorkspaceToolLoop(thread, {
     signal: request.signal,
+    track: request.track,
     limitError: (): SessionError => new SessionError(ERROR_CODES.SESSION_TOOL_LIMIT_EXCEEDED),
   });
   let repair: ModelMessage | undefined;

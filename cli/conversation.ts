@@ -190,7 +190,9 @@ export function createConversation(deps: ConversationDeps): ConversationService 
     refreshJobs();
     const task: Promise<void> = (async (): Promise<void> => {
       try {
-        await worker(modelActivity.observe(thread.id, makeClient(provider)), { model: provider.model, signal: controller.signal });
+        await worker(modelActivity.observe(thread.id, makeClient(provider)), {
+          model: provider.model, signal: controller.signal, track: modelActivity.track(thread.id, controller.signal),
+        });
       } catch (error: unknown) {
         if (!controller.signal.aborted) {
           onError(error instanceof SessionError ? error.message : describeProviderError(error));
@@ -212,7 +214,7 @@ export function createConversation(deps: ConversationDeps): ConversationService 
   }
 
   function startChat(options: StartChatOptions): boolean {
-    const { thread, worker, onError, live = false }: StartChatOptions = options;
+    const { thread, worker, activity, onError, live = false }: StartChatOptions = options;
     const claimed: Thread["activeRequest"] = find(thread.id)?.activeRequest;
     if (!claimed) return false;
     const operation: string = `${thread.id}:chat:${claimed.attempt}`;
@@ -223,7 +225,7 @@ export function createConversation(deps: ConversationDeps): ConversationService 
       worker: async (client: ModelClient, request: ModelRequest): Promise<void> => {
         for (let retry: number = 0; ; retry++) {
           try {
-            await worker(journal.model(operation, client, live), request);
+            await request.track({ kind: activity }, (): Promise<void> => worker(journal.model(operation, client, live), request));
             break;
           } catch (error: unknown) {
             request.signal.throwIfAborted();

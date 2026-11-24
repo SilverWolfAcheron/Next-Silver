@@ -56,6 +56,7 @@ export async function produceCodingRound(options: CodingRoundOptions): Promise<A
   }
   const loop: ReturnType<typeof createWorkspaceToolLoop> = createWorkspaceToolLoop(current, {
     signal: request.signal,
+    track: request.track,
     limitError: (): SessionError => new SessionError(ERROR_CODES.SESSION_TOOL_LIMIT_EXCEEDED),
   });
   let repair: ModelMessage | undefined;
@@ -81,9 +82,9 @@ export async function produceCodingRound(options: CodingRoundOptions): Promise<A
       if (!repair && reply.status !== "blocked" && current.workspace &&
           getPreset(current.presetId).writePolicy === "code" &&
           artifacts.some(({ kind }: Artifact): boolean => kind === "diff")) {
-        const review: CodingPreflightReport = await preflightCodingChanges(
-          current.workspace, artifacts, { policy: "code", signal: request.signal }
-        );
+        const workspace: NonNullable<Thread["workspace"]> = current.workspace;
+        const review: CodingPreflightReport = await request.track({ kind: "preflight" },
+          (): Promise<CodingPreflightReport> => preflightCodingChanges(workspace, artifacts, { policy: "code", signal: request.signal }));
         repair = codingDraftRepairMessage(review, artifacts);
         if (repair) continue;
       }

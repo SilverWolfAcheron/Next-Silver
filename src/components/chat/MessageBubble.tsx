@@ -1,7 +1,7 @@
 import type { JSX } from "react";
 import { MESSAGE_ACTION_CLASS } from "../../constants/styles";
 import { useI18n } from "../../hooks/useI18n";
-import { formatError } from "../../i18n/errors";
+import { formatError, formatLocalizedText } from "../../i18n/errors";
 import type { MessageBubbleProps } from "../../types/chat";
 import { CopyButton } from "../common/CopyButton";
 
@@ -14,15 +14,16 @@ export function MessageBubble({
 }: MessageBubbleProps): JSX.Element {
   const { t }: ReturnType<typeof useI18n> = useI18n();
   const isUser: boolean = message.role === "user";
+  const text: string = isUser ? message.text : formatLocalizedText(message.text, t);
 
   return (
     <article className={`flex min-w-0 flex-col ${isUser ? "items-end" : "items-start"}`}>
       <div
         className={`min-w-0 ${isUser ? "max-w-[88%] rounded-[18px] bg-fill px-4 py-2" : "max-w-full"}`}
       >
-        {message.text && (
+        {text && (
           <div className="text-[17px] leading-[22px] wrap-anywhere whitespace-pre-wrap text-label">
-            {message.text}
+            {text}
           </div>
         )}
 
@@ -91,14 +92,14 @@ export function MessageBubble({
         )}
       </div>
 
-      {(message.text || onRetry || delivery) && (
+      {(text || onRetry || delivery) && (
         <div className="flex flex-wrap items-center gap-x-1">
           {delivery && (
             <span className="px-1 text-[12px] text-secondary">
               {delivery === "queued" ? t.chat.queuedLabel : t.chat.submittedLabel}
             </span>
           )}
-          {message.text && <CopyButton text={message.text} />}
+          {text && <CopyButton text={text} />}
           {onRetry && (
             <button
               type="button"

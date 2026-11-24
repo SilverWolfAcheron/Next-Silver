@@ -2,7 +2,7 @@ import { Fragment, useLayoutEffect, useMemo, useRef } from "react";
 import type { JSX, RefObject, UIEvent } from "react";
 import type { FileDecision } from "../../types/diff";
 import { getPreset } from "../../agent-core/presets";
-import type { Artifact, ChatMessage, Thread, WorkspaceSummary, WritePolicy } from "../../agent-core/types";
+import type { Artifact, ChatMessage, Run, Thread, WorkspaceSummary, WritePolicy } from "../../agent-core/types";
 import { useI18n } from "../../hooks/useI18n";
 import { useComposerStore } from "../../stores/composerStore";
 import { useLayoutStore } from "../../stores/layoutStore";
@@ -30,6 +30,7 @@ export function ThreadView({
   const retryMessage: (threadId: string, messageId: string) => void = useRuntimeStore(
     (s: RuntimeStore): ((threadId: string, messageId: string) => void) => s.retryMessage
   );
+  const retryRun: RuntimeStore["retryRun"] = useRuntimeStore((s: RuntimeStore): RuntimeStore["retryRun"] => s.retryRun);
   const resolveConfirmation: (threadId: string, messageId: string, accepted: boolean) => void =
     useRuntimeStore(
       (s: RuntimeStore): ((threadId: string, messageId: string, accepted: boolean) => void) =>
@@ -158,8 +159,13 @@ export function ThreadView({
           <div className={`flex flex-col gap-3 px-4 py-4 ${centered ? "mx-auto w-full max-w-4xl" : ""}`}>
             {currentThread.messages.map((message: ChatMessage): JSX.Element => {
               if (message.role === "user") precedingUserId = message.id;
-              const retryId: string | undefined =
-                message.role === "user" || message.error ? precedingUserId : undefined;
+              const retryId: string | undefined = message.role === "user" || message.error ? precedingUserId : undefined;
+              const retryableRun: Run | undefined = message.retryRunId ? currentThread.runs.find(
+                (run: Run): boolean => run.id === message.retryRunId && (run.status === "blocked" || run.status === "paused")
+              ) : undefined;
+              const onRetry: (() => void) | undefined = retryableRun
+                ? (): void => retryRun(currentThread.id, retryableRun.id)
+                : !message.retryRunId && retryId ? (): void => retryMessage(currentThread.id, retryId) : undefined;
               const linkedArtifacts: Artifact[] | undefined = artifactBuckets.byMessageId.get(
                 message.id
               );
@@ -169,7 +175,7 @@ export function ThreadView({
                   <MessageBubble
                     message={message}
                     delivery={message.id === latestUserId && !queuedMessages?.length ? "submitted" : undefined}
-                    onRetry={retryId ? (): void => retryMessage(currentThread.id, retryId) : undefined}
+                    onRetry={onRetry}
                     onChoose={(choice: string): void => chooseMessage(currentThread, message.id, choice)}
                     onConfirm={(accepted: boolean): void =>
                       resolveConfirmation(currentThread.id, message.id, accepted)

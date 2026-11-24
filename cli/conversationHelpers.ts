@@ -3,7 +3,7 @@ import type { ModelClient } from "../src/agent-core/provider/client";
 import type { ProviderConfig } from "../src/agent-core/provider/presets";
 import type { ModelMessage } from "../src/agent-core/session";
 import type { Action, SilverState } from "../src/agent-core/silverState";
-import type { ModelActivity } from "../src/types/modelActivity";
+import type { AgentOperationKind, ModelActivity, TrackAgentOperation } from "../src/types/modelActivity";
 import type {
   Brief,
   ChatMessage,
@@ -17,6 +17,7 @@ import type { createSeatExecution } from "./seatExecution";
 export interface ModelRequest {
   model: string;
   signal: AbortSignal;
+  track: TrackAgentOperation;
 }
 
 export type Worker = (client: ModelClient, request: ModelRequest) => Promise<void>;
@@ -64,6 +65,7 @@ export interface StartJobOptions {
 
 export interface StartChatOptions {
   thread: Thread;
+  activity: AgentOperationKind;
   worker: Worker;
   onError: (note: string) => void;
   live?: boolean;

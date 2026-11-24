@@ -65,6 +65,7 @@ function isChatMessage(value: unknown): value is ChatMessage {
   if (value.attachments !== undefined && !isList(value.attachments, isString)) return false;
   if (value.workspaceId !== undefined && !isId(value.workspaceId)) return false;
   if (value.error !== undefined && !isString(value.error)) return false;
+  if (value.retryRunId !== undefined && !isId(value.retryRunId)) return false;
 
   const confirm: unknown = value.confirm;
   return confirm === undefined || (
@@ -138,7 +139,7 @@ function projectBrief(brief: Brief): Brief {
 
 function projectChatMessage(message: ChatMessage): ChatMessage {
   return {
-    ...selectFields(message, ["id", "role", "text", "choices", "assumptions", "error", "attachments", "workspaceId"]),
+    ...selectFields(message, ["id", "role", "text", "choices", "assumptions", "error", "retryRunId", "attachments", "workspaceId"]),
     confirm: message.confirm && selectFields(message.confirm, ["intent", "summary", "acceptLabel", "declineLabel"]),
   };
 }

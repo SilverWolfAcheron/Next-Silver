@@ -25,6 +25,22 @@ async function until(read, explanation) {
   throw new Error(explanation);
 }
 
+async function readActivityFrames(body, threadId, seen) {
+  let buffer = "";
+  for await (const chunk of body.pipeThrough(new TextDecoderStream())) {
+    buffer += chunk;
+    const frames = buffer.split("\n\n");
+    buffer = frames.pop() ?? "";
+    for (const frame of frames) {
+      if (!frame.startsWith("data: ")) continue;
+      const activity = JSON.parse(frame.slice(6)).modelActivity?.[threadId];
+      for (const { kind, target, status } of activity?.operations ?? []) {
+        seen.add(`${kind}:${target ?? ""}:${status}`);
+      }
+    }
+  }
+}
+
 test("desktop CLI runs six rounds, reattaches, and resumes active seats without replaying completed model requests", { timeout: 120_000 }, async () => {
   const fixture = await mkdtemp(join(tmpdir(), "silver-desktop-runtime-"));
   const workspace = join(fixture, "workspace");
@@ -56,6 +72,7 @@ test("desktop CLI runs six rounds, reattaches, and resumes active seats without 
   let firstIntake;
   let checksReachedNextRound = false;
   let firstDraftRepaired = false;
+  let invalidJudgments = 0;
   let gameError;
   const plan = {
     intent: "运行本机检查并通过修复", outcome: "完成六轮独立缺口",
@@ -90,6 +107,14 @@ test("desktop CLI runs six rounds, reattaches, and resumes active seats without 
       }
       response.writeHead(200, { "Content-Type": "text/event-stream" });
       const send = (value) => response.end(events(JSON.stringify(value)) + "data: [DONE]\n\n");
+      if (userData.includes("测试格式错误的迭代判断")) {
+        if (system.includes("你负责判断同一工作项本轮结果")) {
+          send(invalidJudgments++ === 0 ? { verdict: "done" } : { verdict: "done", gaps: [], evidence: ["goal 已核对"] });
+        } else {
+          send({ status: "completed", artifacts: [{ kind: "findings", title: "审查结果", body: "已核对本轮目标。" }] });
+        }
+        return;
+      }
       if (system.includes("从对话提取简报")) {
         assert.match(system, /当前会话已绑定本地工作区/u);
         const requested = payload.messages.filter(({ content }) => content.includes("工具结果。以下是工作区数据")).length;
@@ -267,6 +292,10 @@ test("desktop CLI runs six rounds, reattaches, and resumes active seats without 
       headers: { authorization: `Bearer ${connection.token}` }, signal: select.signal,
     });
     assert.equal(feed.status, 200);
+    const seen = new Set();
+    const feedDone = readActivityFrames(feed.body, threadId, seen).catch((error) => {
+      if (error.name !== "AbortError") gameError = error;
+    });
     await action("bindWorkspace", threadId, bound.id);
     const found = await action("workspace.searchText", bound.id, "independent", 10);
     assert.deepEqual(found, [{ path: "review.txt", line: 1, text: "independent context" }]);
@@ -295,12 +324,17 @@ test("desktop CLI runs six rounds, reattaches, and resumes active seats without 
     await action("submitComposer", threadId, draft);
     const thread = async () => (await call("/state")).state.threads.find(({ id }) => id === threadId);
     const activity = async () => (await call("/state")).modelActivity[threadId];
+    const streamState = async () => {
+      const { operations, ...stream } = await activity();
+      return stream;
+    };
     await until(() => firstIntake, "The composer submission did not reach the model service");
-    assert.deepEqual(await activity(), { requesting: 1, accepted: 0, streaming: 0 });
+    assert.deepEqual(await streamState(), { requesting: 1, accepted: 0, streaming: 0 });
+    assert.ok((await activity()).operations.some(({ kind, status }) => kind === "brief" && status === "running"));
     assert.deepEqual((await thread()).messages.find(({ role }) => role === "user").text, draft.text);
     firstIntake.accept();
     await until(async () => (await activity())?.accepted === 1, "Response headers did not acknowledge the request");
-    assert.deepEqual(await activity(), { requesting: 0, accepted: 1, streaming: 0 });
+    assert.deepEqual(await streamState(), { requesting: 0, accepted: 1, streaming: 0 });
     firstIntake.stream();
     const streaming = await until(async () => {
       const progress = await activity();
@@ -309,7 +343,8 @@ test("desktop CLI runs six rounds, reattaches, and resumes active seats without 
     assert.equal(streaming.accepted, 0);
     firstIntake.finish();
     const brief = await until(async () => (await thread()).pendingConfirmation, "No brief confirmation");
-    assert.deepEqual(await activity(), { requesting: 0, accepted: 0, streaming: 0, outcome: "ended" });
+    assert.deepEqual(await streamState(), { requesting: 0, accepted: 0, streaming: 0, outcome: "ended" });
+    await until(() => seen.has("read:README.md:running") && seen.has("read:README.md:finished"), "Desktop events missed the actual file read");
     assert.equal((await thread()).draft, undefined);
     assert.deepEqual((await thread()).messages.find(({ role }) => role === "user").attachments, ["source.txt"]);
     assert.equal(intakeReads, 2);
@@ -330,8 +365,9 @@ test("desktop CLI runs six rounds, reattaches, and resumes active seats without 
     assert.ok((await thread()).messages.some(({ text }) => text === "已自动审批：确认简报。"));
     await action("setAutoApproval", threadId, false, bound.id);
     select.abort();
+    await feedDone;
     await until(async () => (await thread()).runs[0]?.seats.find(({ id }) => id === "writer")?.status === "completed", "Writer failed after window disconnected");
-    assert.deepEqual(await activity(), { requesting: 0, accepted: 1, streaming: 0 });
+    assert.deepEqual(await streamState(), { requesting: 0, accepted: 1, streaming: 0 });
     assert.equal(toolReads, 15);
     assert.equal(firstDraftRepaired, true);
     firstHeld();
@@ -349,6 +385,7 @@ test("desktop CLI runs six rounds, reattaches, and resumes active seats without 
     await until(async () => secondHeld && (await thread()).runs[0]?.seats.find(({ id }) => id === "writer")?.status === "completed", "Second round did not run");
     assert.equal(checksReachedNextRound, true);
     const beforeShutdown = await thread();
+    assert.ok((await activity()).operations.some(({ kind, target, status }) => kind === "check" && target === "npm test" && status === "finished"));
     assert.ok(beforeShutdown.messages.some(({ text }) => text === "已自动审批：允许运行检查。"));
     assert.equal(beforeShutdown.runs[0].iterations[0].checksApprovedAutomatically, true);
     assert.equal(beforeShutdown.runs[0].iterations.length, 2);
@@ -376,7 +413,7 @@ test("desktop CLI runs six rounds, reattaches, and resumes active seats without 
       return current.runs[0]?.status === "completed" && current;
     }, "Six-round work item did not complete");
     assert.deepEqual(completed.autoApproval, { workspaceId: bound.id });
-    assert.deepEqual(await activity(), { requesting: 0, accepted: 0, streaming: 0, outcome: "ended" });
+    assert.deepEqual(await streamState(), { requesting: 0, accepted: 0, streaming: 0, outcome: "ended" });
     assert.equal(completed.runs.length, 1);
     assert.equal(completed.runs[0].iterations.length, 6);
     assert.equal(completed.runs[0].iterations.at(-1).verdict, "done");
@@ -391,6 +428,16 @@ test("desktop CLI runs six rounds, reattaches, and resumes active seats without 
     await until(async () => (await call("/state")).modelActivity[stoppedThread]?.streaming === 1, "Stop fixture did not stream");
     assert.equal(await action("stop", stoppedThread), true);
     assert.equal((await call("/state")).modelActivity[stoppedThread]?.outcome, "stopped");
+    assert.ok((await call("/state")).modelActivity[stoppedThread].operations.some(({ kind, status }) => kind === "brief" && status === "cancelled"));
+    const invalidThread = await action("newThread", "review");
+    await action("selectModel", invalidThread, "newapi", "fixture");
+    await action("sendMessage", invalidThread, "测试格式错误的迭代判断");
+    const invalidState = async () => (await call("/state")).state.threads.find(({ id }) => id === invalidThread);
+    const failure = await until(async () => (await invalidState()).messages.find(({ error }) => error === "ITERATION_JUDGMENT_INVALID"), "The judge error was not reported as a localizable error");
+    assert.equal(failure.text, "");
+    assert.ok((await call("/state")).modelActivity[invalidThread].operations.some(({ kind, status }) => kind === "judge" && status === "failed"));
+    await action("retryRun", invalidThread, failure.retryRunId);
+    await until(async () => (await invalidState()).runs.find(({ id }) => id === failure.retryRunId)?.status === "completed", "Retry did not resume the blocked work item");
     const finished = once(newHost, "exit");
     await call("/shutdown", {});
     await finished;

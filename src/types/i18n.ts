@@ -1,7 +1,7 @@
 import type { Autonomy, RunStatus, SeatRole } from "../agent-core/types";
 import type { ErrorMessages } from "./errors";
 import type { GitFileStatus } from "./git";
-import type { ModelStreamOutcome, ModelStreamPhase } from "./modelActivity";
+import type { AgentOperationKind, AgentOperationStatus, ModelStreamOutcome, ModelStreamPhase } from "./modelActivity";
 
 export type Locale = "zh" | "ja" | "en";
 
@@ -105,6 +105,9 @@ export interface Messages {
       endedAwaitingApproval: string;
       awaitingApproval: string;
       details: Record<ModelStreamPhase, (count: number) => string>;
+      operations: Record<AgentOperationKind, string>;
+      operationStatus: Record<AgentOperationStatus, string>;
+      operationCount: (count: number) => string;
       local: string;
       rate: (value: string) => string;
       rateHint: string;

@@ -12,6 +12,7 @@ import { describeProviderError } from "../src/agent-core/provider/client";
 import type { ModelClient } from "../src/agent-core/provider/client";
 import type { SilverState } from "../src/agent-core/silverState";
 import type { RequestJournal } from "./journal";
+import type { ModelRequest } from "./conversationHelpers";
 
 export interface SeatRunOutcome {
   status: "completed" | "blocked";
@@ -22,7 +23,7 @@ export interface ExecuteSeatRunOptions {
   thread: Thread;
   run: Run;
   client: ModelClient;
-  request: { model: string; signal: AbortSignal };
+  request: ModelRequest;
 }
 
 export interface SeatExecution {
@@ -36,7 +37,7 @@ interface Parent {
   runId: string;
   workspace: Thread["workspace"];
   client: ModelClient;
-  request: { model: string; signal: AbortSignal };
+  request: ModelRequest;
   finish: (result?: SeatRunOutcome) => void;
 }
 
@@ -111,14 +112,16 @@ export function createSeatExecution(
     const stamp: string = active.run.iterations?.at(-1)?.id ?? "legacy";
     const operation: string = `${parent.key}:${stamp}:seat:${seat.id}:${seat.attempt ?? ""}`;
     try {
-      const result: SeatResult = await runSeat({
+      const result: SeatResult = await parent.request.track({
+        kind: seat.role === "audit" ? "auditSeat" : "developSeat", target: seat.title,
+      }, (): Promise<SeatResult> => runSeat({
         thread: { ...active.thread, presetId: "develop", workspace: parent.workspace },
         run: active.run,
         seat,
         client: journal.model(operation, parent.client),
         request: parent.request,
         onProgress: (note: string): void => editSeat(parent, seatId, (current: AgentSeat): AgentSeat => ({ ...current, note })),
-      });
+      }));
       if (!parent.request.signal.aborted) editSeat(parent, seatId, (current: AgentSeat): AgentSeat => ({ ...current, ...result }));
       if (!parent.request.signal.aborted) journal.clear(operation);
     } catch (error) {

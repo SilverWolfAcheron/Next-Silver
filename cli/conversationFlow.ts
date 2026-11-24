@@ -1,7 +1,7 @@
 import { getDomain } from "../src/agent-core/domains/pcb";
 import { canAutoApprove } from "../src/agent-core/autoApproval";
 import type { DomainPack } from "../src/agent-core/domains/pcb";
-import { ERROR_CODES } from "../src/agent-core/errors";
+import { decodeErrorCode, ERROR_CODES } from "../src/agent-core/errors";
 import { intakeQuestions } from "../src/agent-core/intake";
 import { blockIteration } from "../src/agent-core/iterate";
 import { getPreset } from "../src/agent-core/presets";
@@ -154,6 +154,7 @@ export function createConversationFlow(kernel: ConversationKernel): Conversation
       const messages: ModelMessage[] = [...prompt, ...(await attachedFiles(thread, message.id))];
       const loop: ReturnType<typeof createWorkspaceToolLoop> = createWorkspaceToolLoop(thread, {
         signal: request.signal,
+        track: request.track,
         limitError: (): SessionError => new SessionError(ERROR_CODES.SESSION_TOOL_LIMIT_EXCEEDED),
       });
       for (;;) {
@@ -249,6 +250,7 @@ export function createConversationFlow(kernel: ConversationKernel): Conversation
     const reportError = (error: string): void => append(threadId, assistant("", { error }), messageId);
     const started: boolean = startChat({
       thread,
+      activity: "plan",
       onError: reportError,
       worker: async (client: ModelClient, request: ModelRequest): Promise<void> => {
         const existingRuns: { title: string; status: Run["status"]; dependsOn: string[] }[] =
@@ -278,6 +280,7 @@ export function createConversationFlow(kernel: ConversationKernel): Conversation
         prompt.push(...(await attachedFiles(thread, messageId || undefined)));
         const loop: ReturnType<typeof createWorkspaceToolLoop> = createWorkspaceToolLoop(thread, {
           signal: request.signal,
+          track: request.track,
           limitError: (): SessionError => new SessionError(ERROR_CODES.SESSION_TOOL_LIMIT_EXCEEDED),
         });
         let response: Awaited<ReturnType<typeof askModel>> = await askModel(client, request, loop.messages(prompt));
@@ -376,6 +379,9 @@ export function createConversationFlow(kernel: ConversationKernel): Conversation
         run.seats?.filter(({ role }: AgentSeat): boolean => role === "develop").length ?? 0;
       append(threadId, assistant(`${run.title.slice(0, 48)}：已安排 ${total} 个开发席位。`));
     }
+    const reportBlocked = (note: string): void => append(threadId, decodeErrorCode(note)
+      ? assistant("", { error: note, retryRunId: runId })
+      : assistant(note, { retryRunId: runId }));
     start({
       thread,
       key: runId,
@@ -407,7 +413,7 @@ export function createConversationFlow(kernel: ConversationKernel): Conversation
             return produceCodingRound({ current, item, model, request, callbacks: { edit, editMessage, attachedFiles } });
           },
         });
-        if (blocked) append(threadId, assistant(blocked));
+        if (blocked) reportBlocked(blocked);
         if (!request.signal.aborted && thread.mode === "single") {
           edit(threadId, (state: Thread): Thread => {
             if (state.runs.find(({ id }: Run): boolean => id === runId)?.status !== "completed") {
@@ -430,7 +436,7 @@ export function createConversationFlow(kernel: ConversationKernel): Conversation
             item.id === runId ? blockIteration(item, note) : item
           ),
         }));
-        append(threadId, assistant(note));
+        reportBlocked(note);
       },
     });
   }
@@ -547,6 +553,7 @@ export function createConversationFlow(kernel: ConversationKernel): Conversation
       if (thread.intakeStep !== "done") {
         startChat({
           thread,
+          activity: "brief",
           worker: (client: ModelClient, request: ModelRequest): Promise<void> =>
             intake(thread, message, { client, request }),
           onError: reportError,
@@ -555,6 +562,7 @@ export function createConversationFlow(kernel: ConversationKernel): Conversation
       } else {
         startChat({
           thread,
+          activity: "classify",
           worker: (client: ModelClient, request: ModelRequest): Promise<void> =>
             classify(thread, message, { client, request }),
           onError: reportError,

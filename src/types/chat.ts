@@ -37,6 +37,9 @@ export interface ThreadViewProps {
 export interface AgentActivityView {
   label: string;
   details: string[];
+  operations?: { id: number; label: string; status: string }[];
+  operationCount?: string;
+  active?: boolean;
   rate?: string;
   rateHint?: string;
 }

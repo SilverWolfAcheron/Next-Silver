@@ -118,6 +118,7 @@ export interface ChatMessage {
   choices?: string[];
   assumptions?: string[];
   error?: string;
+  retryRunId?: string;
   attachments?: string[];
   workspaceId?: string;
   confirm?: { intent: Intent; summary: string; acceptLabel?: string; declineLabel?: string };
