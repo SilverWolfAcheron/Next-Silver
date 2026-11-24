@@ -47,17 +47,21 @@ function codeToolLimits(options?: Partial<CodingToolLimits>): CodingToolLimits {
   };
 }
 
-function roundTools(batch: CodingToolBatch, seen: ReadonlySet<string>, allowance: number): Round {
+function roundTools(
+  batch: CodingToolBatch, seen: ReadonlySet<string>, options: { allowance: number; refreshKey?: CodingToolLoopOptions["refreshKey"] }
+): Round {
   const round: Round = { tools: [], keys: [], invalid: batch.invalid, duplicates: 0, limited: 0 };
   const batchKeys: Set<string> = new Set();
   for (const tool of batch.tools) {
-    const key: string = codingToolKey(tool);
+    const base: string = codingToolKey(tool);
+    const refresh: string | undefined = options.refreshKey?.(tool);
+    const key: string = refresh === undefined ? base : `${base}#${refresh}`;
     if (seen.has(key) || batchKeys.has(key)) {
       round.duplicates++;
       continue;
     }
     batchKeys.add(key);
-    if (round.tools.length >= allowance) {
+    if (round.tools.length >= options.allowance) {
       round.limited++;
       continue;
     }
@@ -141,7 +145,9 @@ export function createCodingToolLoop(options: CodingToolLoopOptions): CodingTool
     state.busy = true;
     try {
       const batch: CodingToolBatch = readCodingToolBatch(value, effective);
-      const round: Round = roundTools(batch, seen, effective.requestCount - state.requests);
+      const round: Round = roundTools(batch, seen, {
+        allowance: effective.requestCount - state.requests, refreshKey: options.refreshKey,
+      });
       const count: number = round.tools.length;
       const skipped: number = round.invalid + round.duplicates + round.limited;
       const result: ModelMessage | undefined = count ? await executeWithCancellation(execute, round.tools, signal) : undefined;

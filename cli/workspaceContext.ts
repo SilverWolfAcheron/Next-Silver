@@ -1,3 +1,9 @@
+import { createCodingTasks } from "./codingTasks.ts";
+import { dispatchCodingPlugin } from "./codingPlugins.ts";
+import { createCodingToolLoop } from "./codingToolLoop.ts";
+import type { CodingTasks, CodingTaskResult } from "../src/types/codingTasks.ts";
+import type { CodingPluginResult } from "../src/types/codingPlugins.ts";
+import type { CodingToolLoop, CodingToolLoopOptions, CodingToolRequest } from "../src/types/codingToolLoop.ts";
 import { listWorkspace, readWorkspaceFile, workspaceErrorText } from "./workspace.ts";
 import { CODING_TOOL_LIMITS } from "../src/constants/codingTools.ts";
 import type { CodingReadWindow, CodingSearchResult, CodingToolBase } from "../src/types/codingTools.ts";
@@ -25,6 +31,8 @@ type ToolResultItem = CodingToolBase & (
   | { project: CodingProject }
   | { symbols: CodingSymbolResult }
   | { checks: Awaited<ReturnType<typeof inspectChecks>> }
+  | CodingTaskResult
+  | CodingPluginResult
   | { error: string }
 );
 
@@ -73,7 +81,24 @@ export async function attachmentContext(thread: Thread, messageId?: string): Pro
   return [contextMessage("用户点名的附件", files)];
 }
 
-export async function toolContext(thread: Thread, tools: unknown[], signal: AbortSignal): Promise<ModelMessage> {
+export function createWorkspaceToolLoop(
+  thread: Thread, options: Pick<CodingToolLoopOptions, "signal" | "limits" | "limitError">
+): CodingToolLoop {
+  const tasks: CodingTasks = createCodingTasks();
+  return createCodingToolLoop({
+    ...options,
+    execute: (tools: unknown[], signal: AbortSignal): Promise<ModelMessage> => toolContext({ thread, tasks }, tools, signal),
+    // A snapshot or a previously blocked mutation may be useful again after
+    // the plan has changed. Unchanged duplicates still consume no tool work.
+    refreshKey: (tool: CodingToolRequest): string | undefined =>
+      tool.name === "task_list" || tool.name === "task_update" || tool.name === "task_plan"
+        ? String(tasks.revision) : undefined,
+  });
+}
+
+async function toolContext(
+  { thread, tasks }: { thread: Thread; tasks: CodingTasks }, tools: unknown[], signal: AbortSignal
+): Promise<ModelMessage> {
   const requested: unknown[] = tools.slice(0, 4);
   const workspace: WorkspaceSummary | undefined = thread.workspace;
   const settled: PromiseSettledResult<ToolResultItem>[] = await Promise.allSettled(
@@ -83,6 +108,13 @@ export async function toolContext(thread: Thread, tools: unknown[], signal: Abor
       const path: string = modelString(fields.path);
       try {
         signal.throwIfAborted();
+        // These task calls are synchronous and therefore dispatch in input order.
+        // Read-only plugin/workspace work in the same batch can overlap.
+        const taskResult: CodingTaskResult | undefined = tasks.dispatch(fields);
+        if (taskResult) return { name, path, ...taskResult };
+        if (name === "plugin_list" || name === "plugin_call") {
+          return { name, path, ...await dispatchCodingPlugin(fields, workspace, signal) };
+        }
         if (!workspace) throw new AppError(ERROR_CODES.WORKSPACE_NOT_BOUND);
         assertCodingReadPath(path);
         switch (name) {

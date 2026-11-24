@@ -96,6 +96,11 @@ test("desktop CLI runs six rounds, reattaches, and resumes active seats without 
         const key = `${number}:${seat}`;
         attempts.set(key, (attempts.get(key) ?? 0) + 1);
         if (seat === "reviewer") {
+          if (number === 1 && !userData.includes('"name":"task_list","path":')) {
+            send({ tools: [{ name: "task_list" }] });
+            return;
+          }
+          if (number === 1) assert.match(userData, /"tasks":\[\],"revision":0/u);
           if (number === 1 && !firstHeld) {
             firstHeld = () => send({ status: "completed", summary: "独立材料已核对", findings: [] });
             response.flushHeaders();
@@ -117,7 +122,7 @@ test("desktop CLI runs six rounds, reattaches, and resumes active seats without 
           checksReachedNextRound = true;
         }
         const requested = payload.messages.filter(({ content }) => content.includes("工具结果。以下是工作区数据")).length;
-        if (number === 1 && requested < 6) {
+        if (number === 1 && requested < 15) {
           toolReads++;
           const tools = [
             { name: "project", path: "" },
@@ -126,12 +131,42 @@ test("desktop CLI runs six rounds, reattaches, and resumes active seats without 
             { name: "list", path: "" },
             { name: "read", path: "source.txt", startLine: 1, endLine: 1 },
             { name: "search", query: "independent" },
+            { name: "plugin_list" },
+            { name: "plugin_call", plugin: "workspace", operation: "overview", path: "" },
+            { name: "task_plan", tasks: [
+              { id: "read", title: "Read the source" },
+              { id: "change", title: "Change the source", dependsOn: ["read"] },
+            ] },
+            { name: "task_list" },
+            { name: "task_update", id: "change", status: "in_progress" },
+            { name: "task_update", id: "read", status: "in_progress" },
+            { name: "task_update", id: "read", status: "completed" },
+            { name: "task_list" },
+            // Same request as before; a completed dependency makes it valid now.
+            { name: "task_update", id: "change", status: "in_progress" },
           ];
           if (requested === 1) assert.match(userData, /silver-native-check-fixture/u);
           if (requested === 3) assert.match(userData, /"available":true/u);
           if (requested === 5) assert.match(userData, /"startLine":1,"endLine":1/u);
+          const newest = payload.messages.at(-1).content;
+          if (requested === 7) assert.match(newest, /"plugins":.*"inspect-checks"/u);
+          if (requested === 8) assert.match(newest, /"output":.*silver-native-check-fixture/u);
+          if (requested === 9) assert.match(newest, /"revision":1/u);
+          if (requested === 10) assert.match(newest, /"revision":1/u);
+          if (requested === 11) assert.match(newest, /"error":/u);
+          if (requested === 12) assert.match(newest, /"revision":2/u);
+          if (requested === 13) assert.match(newest, /"revision":3/u);
           send({ tools: [tools[requested]] });
           return;
+        }
+        if (number === 1) {
+          const taskSnapshots = payload.messages.map(({ content }) => content)
+            .filter((content) => content.includes('"name":"task_list","path":'));
+          assert.equal(taskSnapshots.length, 2);
+          assert.match(taskSnapshots.at(-1), /"status":"completed".*"revision":3/u);
+          const updated = payload.messages.map(({ content }) => content)
+            .filter((content) => content.includes('"name":"task_update","path":')).at(-1);
+          assert.match(updated, /"id":"change".*"status":"in_progress".*"revision":4/u);
         }
         const isRepair = userData.includes("客户端预检没有通过");
         if (number === 1 && !isRepair) {
@@ -229,7 +264,7 @@ test("desktop CLI runs six rounds, reattaches, and resumes active seats without 
     await until(() => firstHeld, "First round was not held");
     select.abort();
     await until(async () => (await thread()).runs[0]?.seats.find(({ id }) => id === "writer")?.status === "completed", "Writer failed after window disconnected");
-    assert.equal(toolReads, 6);
+    assert.equal(toolReads, 15);
     assert.equal(firstDraftRepaired, true);
     firstHeld();
     const checkConsent = await until(async () => (await thread()).pendingConfirmation, "Checks ran without explicit consent");

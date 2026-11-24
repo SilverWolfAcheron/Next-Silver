@@ -10,8 +10,7 @@ import type { CodingPreflightReport } from "../src/types/codingPreflight";
 import { assistant, insertReply } from "./conversationHelpers";
 import type { ConversationKernel, ModelRequest } from "./conversationHelpers";
 import { iterationContext } from "./iterations";
-import { toolContext } from "./workspaceContext";
-import { createCodingToolLoop } from "./codingToolLoop";
+import { createWorkspaceToolLoop } from "./workspaceContext";
 import { codingDraftRepairMessage } from "./codingDraftRepair";
 import { preflightCodingChanges } from "./codingPreflight";
 
@@ -55,9 +54,8 @@ export async function produceCodingRound(options: CodingRoundOptions): Promise<A
       ),
     }));
   }
-  const loop: ReturnType<typeof createCodingToolLoop> = createCodingToolLoop({
+  const loop: ReturnType<typeof createWorkspaceToolLoop> = createWorkspaceToolLoop(current, {
     signal: request.signal,
-    execute: (tools: unknown[], signal: AbortSignal): Promise<ModelMessage> => toolContext(current, tools, signal),
     limitError: (): SessionError => new SessionError(ERROR_CODES.SESSION_TOOL_LIMIT_EXCEEDED),
   });
   let repair: ModelMessage | undefined;

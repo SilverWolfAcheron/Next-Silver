@@ -89,6 +89,8 @@ function workspaceKey(tool: CodingToolRequest): CodingToolFields | undefined {
   const path: string = normalizedField(tool.path);
   const query: string = normalizedField(tool.query);
   switch (tool.name) {
+    case "task_list":
+      return { name: tool.name };
     case "list":
     case "project":
     case "checks":
@@ -121,7 +123,7 @@ export function codingToolKey(tool: CodingToolRequest): string {
 }
 
 export function codingToolLabel(tool: CodingToolRequest): string {
-  const value: CodingToolArgument = tool.query || tool.path || tool.directory || tool.cwd || "";
+  const value: CodingToolArgument = tool.query || tool.path || tool.directory || tool.cwd || tool.id || tool.operation || "";
   const target: string = typeof value === "string" && value ? value : "工作区根目录";
   return `${tool.name} ${target.replace(LABEL_CONTROL, " ").slice(0, CODING_TOOL_MAX_LABEL)}`;
 }

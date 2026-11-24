@@ -31,6 +31,7 @@ export interface CodingToolLoopOptions {
   signal: AbortSignal;
   execute: (tools: unknown[], signal: AbortSignal) => Promise<ModelMessage>;
   limits?: Partial<CodingToolLimits>;
+  refreshKey?: (tool: CodingToolRequest) => string | undefined;
   limitError?: () => Error;
 }
 

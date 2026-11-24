@@ -8,10 +8,9 @@ import type { AgentSeat, Artifact, AuditVerdict, Iteration, Requirement, Run, Th
 import { preflightCodingChanges } from "./codingPreflight";
 import type { CodingPreflightIssue, CodingPreflightReport } from "../src/types/codingPreflight";
 import { codingDraftRepairMessage } from "./codingDraftRepair";
-import { attachmentContext, toolContext } from "./workspaceContext";
+import { attachmentContext, createWorkspaceToolLoop } from "./workspaceContext";
 import { iterationContext } from "./iterations";
 import { CODING_TOOL_GUIDE } from "../src/constants/codingTools";
-import { createCodingToolLoop } from "./codingToolLoop";
 
 const MAX_FINDINGS: number = 20;
 const MAX_ARTIFACTS: number = 20;
@@ -214,9 +213,8 @@ export async function runSeat(options: RunSeatOptions): Promise<SeatResult> {
   }
 
   onProgress(developer ? "正在核对开发发现…" : "正在处理席位范围…");
-  const loop: ReturnType<typeof createCodingToolLoop> = createCodingToolLoop({
+  const loop: ReturnType<typeof createWorkspaceToolLoop> = createWorkspaceToolLoop(thread, {
     signal: request.signal,
-    execute: (tools: unknown[], signal: AbortSignal): Promise<ModelMessage> => toolContext(thread, tools, signal),
     limitError: (): SessionError => new SessionError(ERROR_CODES.SESSION_TOOL_LIMIT_EXCEEDED),
   });
   let repair: ModelMessage | undefined;

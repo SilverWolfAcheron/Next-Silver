@@ -44,8 +44,7 @@ import type {
   ConversationKernel,
   ModelRequest,
 } from "./conversationHelpers";
-import { toolContext } from "./workspaceContext";
-import { createCodingToolLoop } from "./codingToolLoop";
+import { createWorkspaceToolLoop } from "./workspaceContext";
 import { CODING_TOOL_GUIDE } from "../src/constants/codingTools";
 import { produceCodingRound } from "./codingRound";
 
@@ -258,9 +257,8 @@ export function createConversationFlow(kernel: ConversationKernel): Conversation
             .join("\n")
         );
         prompt.push(...(await attachedFiles(thread, messageId || undefined)));
-        const loop: ReturnType<typeof createCodingToolLoop> = createCodingToolLoop({
+        const loop: ReturnType<typeof createWorkspaceToolLoop> = createWorkspaceToolLoop(thread, {
           signal: request.signal,
-          execute: (tools: unknown[], signal: AbortSignal): Promise<ModelMessage> => toolContext(thread, tools, signal),
           limitError: (): SessionError => new SessionError(ERROR_CODES.SESSION_TOOL_LIMIT_EXCEEDED),
         });
         let response: Awaited<ReturnType<typeof askModel>> = await askModel(client, request, loop.messages(prompt));
