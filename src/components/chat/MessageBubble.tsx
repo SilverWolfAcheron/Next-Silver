@@ -7,7 +7,7 @@ import { CopyButton } from "../common/CopyButton";
 
 export function MessageBubble({
   message,
-  queued,
+  delivery,
   onRetry,
   onChoose,
   onConfirm,
@@ -20,8 +20,6 @@ export function MessageBubble({
       <div
         className={`min-w-0 ${isUser ? "max-w-[88%] rounded-[18px] bg-fill px-4 py-2" : "max-w-full"}`}
       >
-        {queued && <p className="mb-1 text-[13px] text-secondary">{t.chat.queuedLabel}</p>}
-
         {message.text && (
           <div className="text-[17px] leading-[22px] wrap-anywhere whitespace-pre-wrap text-label">
             {message.text}
@@ -93,8 +91,13 @@ export function MessageBubble({
         )}
       </div>
 
-      {(message.text || onRetry) && (
+      {(message.text || onRetry || delivery) && (
         <div className="flex flex-wrap items-center gap-x-1">
+          {delivery && (
+            <span className="px-1 text-[12px] text-secondary">
+              {delivery === "queued" ? t.chat.queuedLabel : t.chat.submittedLabel}
+            </span>
+          )}
           {message.text && <CopyButton text={message.text} />}
           {onRetry && (
             <button

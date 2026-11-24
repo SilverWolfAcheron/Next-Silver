@@ -1,4 +1,5 @@
 import { getDomain } from "../src/agent-core/domains/pcb";
+import { canAutoApprove } from "../src/agent-core/autoApproval";
 import type { DomainPack } from "../src/agent-core/domains/pcb";
 import { ERROR_CODES } from "../src/agent-core/errors";
 import { intakeQuestions } from "../src/agent-core/intake";
@@ -616,6 +617,8 @@ export function createConversationFlow(kernel: ConversationKernel): Conversation
     if (thread.pendingConfirmation) {
       if (thread.pendingConfirmation.kind === "brief" && thread.queuedMessages?.length) {
         resolveConfirmation(threadId, thread.pendingConfirmation.messageId, false);
+      } else if (canAutoApprove(thread, thread.pendingConfirmation)) {
+        resolveConfirmation(threadId, thread.pendingConfirmation.messageId, "automatic");
       }
       return;
     }

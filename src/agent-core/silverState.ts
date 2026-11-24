@@ -5,6 +5,7 @@ import { mergeThreads, sortThreads } from "./localData";
 import { normalizeDevelopConcurrency } from "./seats";
 import { DEFAULT_PROVIDERS } from "./provider/presets";
 import type { ProviderConfig } from "./provider/presets";
+import type { ModelActivity } from "../types/modelActivity";
 export interface SilverState {
   threads: Thread[];
   currentThreadId: string | null;
@@ -17,8 +18,10 @@ export interface SilverState {
 
 export interface DesktopSnapshot {
   revision: number;
+  stateRevision?: number;
   state: SilverState;
   busyThreads: string[];
+  modelActivity?: Record<string, ModelActivity>;
   workspaceVersions?: Record<string, number>;
 }
 

@@ -1,5 +1,7 @@
 import type { ChatDraft } from "../agent-core/types";
 
+export type ComposerMenu = "preset" | "model" | "approval" | null;
+
 export interface ComposerModeItem {
   id: "develop" | "review" | "explain" | "academic";
   label: string;

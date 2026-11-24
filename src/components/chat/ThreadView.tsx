@@ -67,6 +67,10 @@ export function ThreadView({
   const workspace: WorkspaceSummary | undefined = currentThread?.workspace;
   const messages: ChatMessage[] | undefined = currentThread?.messages;
   const queuedMessages: ChatMessage[] | undefined = currentThread?.queuedMessages;
+  const latestUserId: string | undefined = useMemo(
+    (): string | undefined => messages?.filter(({ role }: ChatMessage): boolean => role === "user").at(-1)?.id,
+    [messages]
+  );
   const artifacts: Artifact[] | undefined = currentThread?.artifacts;
   const writePolicy: WritePolicy = currentThread
     ? getPreset(currentThread.presetId).writePolicy
@@ -97,6 +101,16 @@ export function ThreadView({
       viewportRef.current.scrollTop = viewportRef.current.scrollHeight;
     }
   }, [threadId, messages, queuedMessages, artifacts, focusedArtifactId, setFocusedArtifactId]);
+
+  useLayoutEffect((): (() => void) | undefined => {
+    const viewport: HTMLDivElement | null = viewportRef.current;
+    if (!viewport || focusedArtifactId) return;
+    const observer: ResizeObserver = new ResizeObserver((): void => {
+      if (followMessages.current) viewport.scrollTop = viewport.scrollHeight;
+    });
+    observer.observe(viewport);
+    return (): void => observer.disconnect();
+  }, [focusedArtifactId]);
 
   let precedingUserId: string | undefined = undefined;
   const hasConversationContent: boolean = Boolean(
@@ -154,6 +168,7 @@ export function ThreadView({
                 <Fragment key={message.id}>
                   <MessageBubble
                     message={message}
+                    delivery={message.id === latestUserId && !queuedMessages?.length ? "submitted" : undefined}
                     onRetry={retryId ? (): void => retryMessage(currentThread.id, retryId) : undefined}
                     onChoose={(choice: string): void => chooseMessage(currentThread, message.id, choice)}
                     onConfirm={(accepted: boolean): void =>
@@ -180,7 +195,7 @@ export function ThreadView({
             )}
 
             {queuedMessages?.map((message: ChatMessage): JSX.Element => (
-              <MessageBubble key={message.id} message={message} queued />
+              <MessageBubble key={message.id} message={message} delivery="queued" />
             ))}
           </div>
         ) : (

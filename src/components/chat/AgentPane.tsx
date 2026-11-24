@@ -9,6 +9,7 @@ import type { AgentTab } from "../../types/layout";
 import type { UIAction } from "../../types/runtime";
 import type { LayoutStore, RuntimeStore } from "../../types/stores";
 import { InspectorPane } from "../inspector/InspectorPane";
+import { AgentActivity } from "./AgentActivity";
 import { Composer } from "./Composer";
 import { ThreadView } from "./ThreadView";
 
@@ -23,9 +24,6 @@ export function AgentPane({
   const { t }: ReturnType<typeof useI18n> = useI18n();
   const currentThread: Thread | null = useRuntimeStore(
     (s: RuntimeStore): Thread | null => s.currentThread
-  );
-  const running: boolean = useRuntimeStore((s: RuntimeStore): boolean =>
-    s.currentThread ? s.busyThreads.includes(s.currentThread.id) : false
   );
   const dispatch: (action: UIAction) => void = useRuntimeStore(
     (s: RuntimeStore): ((action: UIAction) => void) => s.dispatch
@@ -84,17 +82,6 @@ export function AgentPane({
         </button>
       )}
 
-      {tab === "chat" && running && !confirmation && (
-        <p
-          role="status"
-          className={`shrink-0 border-b border-separator px-3 py-1.5 text-[13px] text-secondary ${
-            centered ? "text-center" : ""
-          }`}
-        >
-          {t.chat.runningStatus}
-        </p>
-      )}
-
       <div className="flex min-h-0 flex-1 flex-col">
         {tab === "chat" || !currentThread ? (
           <ThreadView centered={centered} onPickReferenceFile={onPickReferenceFile} />
@@ -120,6 +107,7 @@ export function AgentPane({
           />
         )}
       </div>
+      {tab === "chat" && <AgentActivity key={currentThread?.id} />}
       <Composer />
     </aside>
   );

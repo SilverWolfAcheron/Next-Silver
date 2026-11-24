@@ -53,6 +53,7 @@ test("desktop CLI runs six rounds, reattaches, and resumes active seats without 
   let heldDisconnects = 0;
   let toolReads = 0;
   let intakeReads = 0;
+  let firstIntake;
   let checksReachedNextRound = false;
   let firstDraftRepaired = false;
   let gameError;
@@ -69,6 +70,24 @@ test("desktop CLI runs six rounds, reattaches, and resumes active seats without 
       const payload = JSON.parse(body);
       const system = payload.messages[0].content;
       const userData = payload.messages.map(({ content }) => content).join("\n");
+      if (userData.includes("测试手动停止流式输出")) {
+        response.writeHead(200, { "Content-Type": "text/event-stream" });
+        response.write(events("这是尚未完成的回复。"));
+        return;
+      }
+      if (system.includes("从对话提取简报") && !firstIntake) {
+        assert.match(system, /当前会话已绑定本地工作区/u);
+        intakeReads++;
+        firstIntake = {
+          accept() {
+            response.writeHead(200, { "Content-Type": "text/event-stream" });
+            response.flushHeaders();
+          },
+          stream() { response.write(events('{"tools":')); },
+          finish() { response.end(events('[{"name":"project","path":""}]}') + "data: [DONE]\n\n"); },
+        };
+        return;
+      }
       response.writeHead(200, { "Content-Type": "text/event-stream" });
       const send = (value) => response.end(events(JSON.stringify(value)) + "data: [DONE]\n\n");
       if (system.includes("从对话提取简报")) {
@@ -259,10 +278,13 @@ test("desktop CLI runs six rounds, reattaches, and resumes active seats without 
     const alternateFolder = join(fixture, "alternate");
     await mkdir(alternateFolder);
     const alternate = await action("workspace.bind", alternateFolder);
+    await assert.rejects(action("setAutoApproval", threadId, true, alternate.id), /WORKSPACE_APPROVAL_MISMATCH/u);
+    await action("setAutoApproval", threadId, true, bound.id);
     await action("bindWorkspace", threadId, alternate.id);
     await assert.rejects(action("submitComposer", threadId, draft), /WORKSPACE_DRAFT_MISMATCH/u);
     const rebound = (await call("/state")).state.threads.find(({ id }) => id === threadId);
     assert.equal(rebound.draft, undefined);
+    assert.equal(rebound.autoApproval, undefined);
     assert.equal(rebound.messages.length, 0);
     await action("bindWorkspace", threadId, bound.id);
     await action("saveProvider", {
@@ -272,7 +294,22 @@ test("desktop CLI runs six rounds, reattaches, and resumes active seats without 
     await action("selectModel", threadId, "newapi", "fixture");
     await action("submitComposer", threadId, draft);
     const thread = async () => (await call("/state")).state.threads.find(({ id }) => id === threadId);
+    const activity = async () => (await call("/state")).modelActivity[threadId];
+    await until(() => firstIntake, "The composer submission did not reach the model service");
+    assert.deepEqual(await activity(), { requesting: 1, accepted: 0, streaming: 0 });
+    assert.deepEqual((await thread()).messages.find(({ role }) => role === "user").text, draft.text);
+    firstIntake.accept();
+    await until(async () => (await activity())?.accepted === 1, "Response headers did not acknowledge the request");
+    assert.deepEqual(await activity(), { requesting: 0, accepted: 1, streaming: 0 });
+    firstIntake.stream();
+    const streaming = await until(async () => {
+      const progress = await activity();
+      return progress?.streaming === 1 && progress.estimatedTokensPerSecond > 0 && progress;
+    }, "Stream output did not produce a token rate");
+    assert.equal(streaming.accepted, 0);
+    firstIntake.finish();
     const brief = await until(async () => (await thread()).pendingConfirmation, "No brief confirmation");
+    assert.deepEqual(await activity(), { requesting: 0, accepted: 0, streaming: 0, outcome: "ended" });
     assert.equal((await thread()).draft, undefined);
     assert.deepEqual((await thread()).messages.find(({ role }) => role === "user").attachments, ["source.txt"]);
     assert.equal(intakeReads, 2);
@@ -288,10 +325,13 @@ test("desktop CLI runs six rounds, reattaches, and resumes active seats without 
     assert.equal((await thread()).queuedMessages.length, 0);
     assert.equal((await thread()).runs.length, 0);
     assert.ok((await thread()).messages.some(({ text }) => text === "已根据目录和 README 更新简报。"));
-    await action("resolveConfirmation", threadId, updatedBrief.messageId, true);
+    await action("setAutoApproval", threadId, true, bound.id);
     await until(() => firstHeld, "First round was not held");
+    assert.ok((await thread()).messages.some(({ text }) => text === "已自动审批：确认简报。"));
+    await action("setAutoApproval", threadId, false, bound.id);
     select.abort();
     await until(async () => (await thread()).runs[0]?.seats.find(({ id }) => id === "writer")?.status === "completed", "Writer failed after window disconnected");
+    assert.deepEqual(await activity(), { requesting: 0, accepted: 1, streaming: 0 });
     assert.equal(toolReads, 15);
     assert.equal(firstDraftRepaired, true);
     firstHeld();
@@ -305,10 +345,12 @@ test("desktop CLI runs six rounds, reattaches, and resumes active seats without 
     await action("retryRun", threadId, (await thread()).runs[0].id);
     const retriedCheck = await until(async () => (await thread()).pendingConfirmation, "Retry did not re-request check consent");
     assert.notEqual(retriedCheck.messageId, checkConsent.messageId);
-    await action("resolveConfirmation", threadId, retriedCheck.messageId, true);
+    await action("setAutoApproval", threadId, true, bound.id);
     await until(async () => secondHeld && (await thread()).runs[0]?.seats.find(({ id }) => id === "writer")?.status === "completed", "Second round did not run");
     assert.equal(checksReachedNextRound, true);
     const beforeShutdown = await thread();
+    assert.ok(beforeShutdown.messages.some(({ text }) => text === "已自动审批：允许运行检查。"));
+    assert.equal(beforeShutdown.runs[0].iterations[0].checksApprovedAutomatically, true);
     assert.equal(beforeShutdown.runs[0].iterations.length, 2);
     assert.equal(beforeShutdown.runs[0].status, "in_progress");
     assert.equal(attempts.get("2:writer"), 1);
@@ -321,11 +363,20 @@ test("desktop CLI runs six rounds, reattaches, and resumes active seats without 
     await until(() => secondConnection, "Unfinished seat did not resume");
     assert.equal(attempts.get("2:writer"), 1);
     assert.equal(attempts.get("2:reviewer"), 2);
+    assert.deepEqual((await thread()).autoApproval, { workspaceId: bound.id });
+    await action("setAutoApproval", threadId, false);
     secondConnection();
+    const secondConsent = await until(async () => (await thread()).pendingConfirmation, "Disabled auto-approval was reused for another round");
+    assert.equal(secondConsent.kind, "iteration");
+    assert.equal((await thread()).runs[0].iterations.at(-1).stage, "checks");
+    assert.doesNotMatch(await readFile(join(workspace, "checks.log"), "utf8"), /round-2/u);
+    await action("setAutoApproval", threadId, true, bound.id);
     const completed = await until(async () => {
       const current = await thread();
       return current.runs[0]?.status === "completed" && current;
     }, "Six-round work item did not complete");
+    assert.deepEqual(completed.autoApproval, { workspaceId: bound.id });
+    assert.deepEqual(await activity(), { requesting: 0, accepted: 0, streaming: 0, outcome: "ended" });
     assert.equal(completed.runs.length, 1);
     assert.equal(completed.runs[0].iterations.length, 6);
     assert.equal(completed.runs[0].iterations.at(-1).verdict, "done");
@@ -334,6 +385,12 @@ test("desktop CLI runs six rounds, reattaches, and resumes active seats without 
     assert.equal(await readFile(join(workspace, "source.txt"), "utf8"), "round-6\r\n");
     assert.equal((await readFile(join(workspace, "checks.log"), "utf8")).trim().split("\n").length, 18);
     assert.ok(!JSON.stringify(await call("/state")).includes(fixtureKey));
+    const stoppedThread = await action("newThread", "develop");
+    await action("selectModel", stoppedThread, "newapi", "fixture");
+    await action("sendMessage", stoppedThread, "测试手动停止流式输出");
+    await until(async () => (await call("/state")).modelActivity[stoppedThread]?.streaming === 1, "Stop fixture did not stream");
+    assert.equal(await action("stop", stoppedThread), true);
+    assert.equal((await call("/state")).modelActivity[stoppedThread]?.outcome, "stopped");
     const finished = once(newHost, "exit");
     await call("/shutdown", {});
     await finished;

@@ -74,7 +74,7 @@ export class AnthropicClient implements ModelClient {
       signal: input.signal,
     });
 
-    for await (const event of streamEvents(response, input.signal)) {
+    for await (const event of streamEvents(response, input.signal, input.onAccepted)) {
       const chunk: MessageEvent = readStreamEvent<MessageEvent>(event);
       const type: string = chunk.type ?? event.type;
       if (type === "message_stop") return;

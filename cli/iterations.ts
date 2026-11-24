@@ -1,4 +1,5 @@
 import { mergeDiffArtifacts } from "../src/utils/diff";
+import { autoApprovalEnabled } from "../src/agent-core/autoApproval";
 import { AppError, ERROR_CODES, serializeErrorCode } from "../src/agent-core/errors";
 import {
   blockIteration, buildJudgmentInput, createIteration, nextIterationDecision, parseIterationJudgment,
@@ -212,9 +213,10 @@ export function createIterationEngine(journal: RequestJournal): IterationEngine 
             const available: typeof availability = availability.filter(
               (entry: typeof availability[number]): boolean => entry.available
             );
-            const currentRun: Run = get().run;
+            const { thread: currentThread, run: currentRun }: ReturnType<typeof get> = get();
             const trusted: boolean = Boolean(currentRun.iterations?.some(
-              (round: Iteration): boolean => round.checksApprovedWorkspaceId === workspace.id
+              (round: Iteration): boolean => round.checksApprovedWorkspaceId === workspace.id &&
+                (!round.checksApprovedAutomatically || autoApprovalEnabled(currentThread))
             ));
             if (available.length && !trusted) {
               const note: string = CHECK_AUTHORIZATION;

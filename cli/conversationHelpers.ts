@@ -3,6 +3,7 @@ import type { ModelClient } from "../src/agent-core/provider/client";
 import type { ProviderConfig } from "../src/agent-core/provider/presets";
 import type { ModelMessage } from "../src/agent-core/session";
 import type { Action, SilverState } from "../src/agent-core/silverState";
+import type { ModelActivity } from "../src/types/modelActivity";
 import type {
   Brief,
   ChatMessage,
@@ -32,6 +33,26 @@ export interface ConversationDeps {
   newThread: (presetId: string) => Thread;
   refreshJobs: () => void;
   journal: RequestJournal;
+}
+
+export interface ConversationService {
+  sendMessage: (options: SendMessageOptions) => void;
+  selectModel: (threadId: string | undefined, modelId: string, modelName?: string) => void;
+  changePreset: (threadId: string | undefined, presetId: string) => void;
+  stop: (threadId: string) => boolean;
+  isGenerating: (threadId: string) => boolean;
+  modelActivity: () => Record<string, ModelActivity>;
+  cancelThread: (threadId: string) => void;
+  retryMessage: (threadId: string, userMessageId: string) => void;
+  retryRun: (threadId: string, runId: string) => void;
+  resolveConfirmation: (threadId: string, messageId: string, accepted: boolean) => void;
+  updateBrief: (threadId: string, brief: Brief) => void;
+  promoteThread: (threadId: string) => void;
+  patchFinding: (threadId: string, text: string) => void;
+  resumeQueued: (threadId?: string) => void;
+  rescheduleSeats: () => void;
+  restore: () => void;
+  shutdown: () => Promise<void>;
 }
 
 export interface StartJobOptions {
@@ -100,7 +121,7 @@ export interface ConversationKernel {
   startChat: (options: StartChatOptions) => boolean;
   cancelJob: (threadId: string, key: string) => void;
   confirm: (options: ConfirmOptions) => void;
-  resolveConfirmation: (threadId: string, messageId: string, accepted: boolean) => void;
+  resolveConfirmation: (threadId: string, messageId: string, decision: boolean | "automatic") => void;
   retryOrStart: (threadId: string, runId: string) => void;
   sendMessage: (options: SendMessageOptions) => void;
 }

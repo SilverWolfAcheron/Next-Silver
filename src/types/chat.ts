@@ -1,4 +1,4 @@
-import type { Artifact, ChatMessage, WorkspaceEntry, WorkspaceSummary, WritePolicy } from "../agent-core/types";
+import type { Artifact, ChatMessage, Thread, WorkspaceEntry, WorkspaceSummary, WritePolicy } from "../agent-core/types";
 import type { ModelMenuState } from "./composer";
 import type { FileDecision } from "./diff";
 import type { AgentTab } from "./layout";
@@ -34,9 +34,22 @@ export interface ThreadViewProps {
   onPickReferenceFile?: () => void;
 }
 
+export interface AgentActivityView {
+  label: string;
+  details: string[];
+  rate?: string;
+  rateHint?: string;
+}
+
+export interface ApprovalSelectorProps {
+  thread: Thread;
+  open: boolean;
+  onToggle: () => void;
+}
+
 export interface MessageBubbleProps {
   message: ChatMessage;
-  queued?: boolean;
+  delivery?: "queued" | "submitted";
   onRetry?: () => void;
   onChoose?: (choice: string) => void;
   onConfirm?: (accepted: boolean) => void;

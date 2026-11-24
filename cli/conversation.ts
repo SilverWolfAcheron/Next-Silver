@@ -1,4 +1,5 @@
 import { setTimeout as delay } from "node:timers/promises";
+import { canAutoApprove } from "../src/agent-core/autoApproval";
 import { getDomain } from "../src/agent-core/domains/pcb";
 import { AppError, ERROR_CODES } from "../src/agent-core/errors";
 import { pauseIterations, resolveIterationApproval } from "../src/agent-core/iterate";
@@ -12,9 +13,9 @@ import { reconcile } from "../src/agent-core/reconcile";
 import { pauseSeats, retrySeats } from "../src/agent-core/seats";
 import { SessionError } from "../src/agent-core/session";
 import type { ModelMessage } from "../src/agent-core/session";
+import type { ModelActivity } from "../src/types/modelActivity";
 import type {
   AgentSeat,
-  Brief,
   ChatMessage,
   Iteration,
   PendingConfirmation,
@@ -31,38 +32,22 @@ import {
 import type {
   ConfirmOptions,
   ConversationDeps,
+  ConversationService,
   ModelRequest,
   SendMessageOptions,
   StartChatOptions,
   StartJobOptions,
 } from "./conversationHelpers";
 import { createIterationEngine } from "./iterations";
+import { createModelActivity } from "./modelActivity";
 import { createSeatExecution } from "./seatExecution";
 import { attachmentContext } from "./workspaceContext";
-
-export interface ConversationService {
-  sendMessage: (options: SendMessageOptions) => void;
-  selectModel: (threadId: string | undefined, modelId: string, modelName?: string) => void;
-  changePreset: (threadId: string | undefined, presetId: string) => void;
-  stop: (threadId: string) => boolean;
-  isGenerating: (threadId: string) => boolean;
-  cancelThread: (threadId: string) => void;
-  retryMessage: (threadId: string, userMessageId: string) => void;
-  retryRun: (threadId: string, runId: string) => void;
-  resolveConfirmation: (threadId: string, messageId: string, accepted: boolean) => void;
-  updateBrief: (threadId: string, brief: Brief) => void;
-  promoteThread: (threadId: string) => void;
-  patchFinding: (threadId: string, text: string) => void;
-  resumeQueued: () => void;
-  rescheduleSeats: () => void;
-  restore: () => void;
-  shutdown: () => Promise<void>;
-}
 
 export function createConversation(deps: ConversationDeps): ConversationService {
   const { latest, dispatch, newThread, refreshJobs, journal }: ConversationDeps = deps;
   const jobs: { current: Map<string, Map<string, AbortController>> } = { current: new Map() };
   const activeJobs: Set<Promise<void>> = new Set();
+  const modelActivity: ReturnType<typeof createModelActivity> = createModelActivity(refreshJobs);
   let shuttingDown: boolean = false;
 
   function find(threadId: string): Thread | undefined {
@@ -176,11 +161,14 @@ export function createConversation(deps: ConversationDeps): ConversationService 
   function confirm(options: ConfirmOptions): void {
     const { threadId, action, labels, text = "" }: ConfirmOptions = options;
     const message: ChatMessage = assistant(text, { confirm: labels });
+    const pendingConfirmation: PendingConfirmation = { ...action, messageId: message.id };
     edit(threadId, (thread: Thread): Thread => ({
       ...thread,
-      pendingConfirmation: { ...action, messageId: message.id },
+      pendingConfirmation,
       messages: [...thread.messages, message],
     }));
+    const thread: Thread | undefined = find(threadId);
+    if (thread && canAutoApprove(thread, pendingConfirmation)) queueMicrotask((): void => flow.pump(threadId));
   }
 
   function start(options: StartJobOptions): boolean {
@@ -202,7 +190,7 @@ export function createConversation(deps: ConversationDeps): ConversationService 
     refreshJobs();
     const task: Promise<void> = (async (): Promise<void> => {
       try {
-        await worker(makeClient(provider), { model: provider.model, signal: controller.signal });
+        await worker(modelActivity.observe(thread.id, makeClient(provider)), { model: provider.model, signal: controller.signal });
       } catch (error: unknown) {
         if (!controller.signal.aborted) {
           onError(error instanceof SessionError ? error.message : describeProviderError(error));
@@ -307,6 +295,7 @@ export function createConversation(deps: ConversationDeps): ConversationService 
     if (!content) return;
     const thread: Thread | undefined = threadId ? find(threadId) : newThread("develop");
     if (!thread) return;
+    modelActivity.clearOutcome(thread.id);
     const message: ChatMessage = {
       id: crypto.randomUUID(),
       role: "user",
@@ -523,7 +512,9 @@ export function createConversation(deps: ConversationDeps): ConversationService 
     retryOrStart(threadId, runId);
   }
 
-  function resolveConfirmation(threadId: string, messageId: string, accepted: boolean): void {
+  function resolveConfirmation(threadId: string, messageId: string, decision: boolean | "automatic"): void {
+    const accepted: boolean = decision !== false;
+    const automated: boolean = decision === "automatic";
     const thread: Thread | undefined = find(threadId);
     const action: PendingConfirmation | undefined = thread?.pendingConfirmation;
     if (!thread || action?.messageId !== messageId) return;
@@ -535,7 +526,9 @@ export function createConversation(deps: ConversationDeps): ConversationService 
     editMessage(threadId, messageId, (message: ChatMessage): ChatMessage => ({
       ...message,
       confirm: undefined,
-      text: message.text || (accepted ? "已确认。" : "已取消。"),
+      text: automated
+        ? `已自动审批：${message.confirm?.acceptLabel ?? "继续"}。`
+        : message.text || (accepted ? "已确认。" : "已取消。"),
     }));
     const recent: ChatMessage | undefined = thread.messages
       .filter(({ role }: ChatMessage): boolean => role === "user")
@@ -635,6 +628,7 @@ export function createConversation(deps: ConversationDeps): ConversationService 
                   writes: accepted ? iteration.writes : undefined,
                   stage: accepted || checkApproval ? iteration.stage : ("produce" as const),
                   checksApprovedWorkspaceId: approvalWorkspace ?? iteration.checksApprovedWorkspaceId,
+                  checksApprovedAutomatically: approvalWorkspace ? automated : iteration.checksApprovedAutomatically,
                   checkAwaitingWorkspaceId: undefined,
                   note: approvalNote,
                 },
@@ -747,6 +741,7 @@ export function createConversation(deps: ConversationDeps): ConversationService 
     changePreset,
     stop,
     isGenerating,
+    modelActivity: (): Record<string, ModelActivity> => modelActivity.snapshot(latest.current.threads.map(({ id }: Thread): string => id)),
     cancelThread,
     retryMessage,
     retryRun,
@@ -754,7 +749,10 @@ export function createConversation(deps: ConversationDeps): ConversationService 
     updateBrief: flow.updateBrief,
     promoteThread,
     patchFinding,
-    resumeQueued: (): void => latest.current.threads.forEach(({ id }: Thread): void => flow.pump(id)),
+    resumeQueued(threadId?: string): void {
+      if (threadId) flow.pump(threadId);
+      else latest.current.threads.forEach(({ id }: Thread): void => flow.pump(id));
+    },
     rescheduleSeats: (): void => seated.requestPulse(),
     restore,
     shutdown,

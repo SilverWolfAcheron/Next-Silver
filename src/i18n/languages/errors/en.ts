@@ -142,6 +142,7 @@ export const enErrors: ErrorMessages = {
   WORKSPACE_SEARCH_QUERY_EMPTY: "Search query is empty.",
   WORKSPACE_TOOL_UNAVAILABLE: "This operation is unavailable. Supported tools: list, read, search.",
   WORKSPACE_DRAFT_MISMATCH: "Workspace changed. Please select attachments again.",
+  WORKSPACE_APPROVAL_MISMATCH: "Workspace changed. Select the approval mode again.",
   WORKSPACE_DRAFT_TOO_LONG: "Draft message cannot exceed 100,000 characters.",
   WORKSPACE_SWITCH_WHILE_RUNNING: "Stop active work items in this conversation before switching workspaces.",
   WORKSPACE_NO_WRITABLE_THREAD: "No conversation in the current workspace permits writing documents.",

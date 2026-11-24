@@ -4,7 +4,8 @@ import {
   REPEATED_ITERATION_GAPS, resolveIterationApproval,
 } from "./iterate.ts";
 import type { IterationDecision, IterationJudgment } from "./iterate.ts";
-import type { Brief, IterationCheck, Run } from "./types";
+import { canAutoApprove } from "./autoApproval.ts";
+import type { Brief, Iteration, IterationCheck, PendingConfirmation, Run, Thread } from "./types";
 
 function expect(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -155,4 +156,25 @@ test("failed and missing checks prevent completion and keep exact output in the 
   expect(review.iteration.gaps[0].missing.includes("89 != 90"), "repair gap identifies the failure");
   const clean = begin(newRun(), undefined, requiredChecks.map((command) => ({ command, exitCode: 0, output: "通过" })));
   expect(nextIterationDecision(clean, done("R1 已完成"), { autonomy: "decide", requiredChecks }).action === "complete", "all successful checks permit well-supported completion");
+});
+
+test("automatic approval covers routine work and current-workspace checks without approving risky changes", () => {
+  const run: Run = begin(newRun());
+  const round: Iteration = { ...run.iterations![0], approval: "apply", stage: "checks", checkAwaitingWorkspaceId: "workspace" };
+  const thread: Thread = {
+    id: "thread", title: "Agent", mode: "project", presetId: "develop", messages: [], artifacts: [],
+    brief: { intent: "阅读代码", outcome: "总结", constraints: "无", autonomy: "ask", requirements: [], outOfScope: [], domainFields: {} },
+    modelId: "model", inspectorTab: "brief", inspectorOpen: false, intakeStep: "done",
+    workspace: { id: "workspace", name: "Workspace" }, autoApproval: { workspaceId: "workspace" },
+    runs: [{ ...run, status: "in_progress", iterations: [round] }],
+  };
+  const approval: PendingConfirmation = { kind: "iteration", phase: "apply", messageId: "approval", runId: run.id, iterationId: round.id };
+  expect(canAutoApprove(thread, approval), "workspace checks use the user's automatic grant");
+  expect(!canAutoApprove({ ...thread, autoApproval: undefined }, approval), "manual is the default");
+  expect(!canAutoApprove({ ...thread, workspace: { id: "other", name: "Other" } }, approval), "a changed workspace needs its own grant");
+  expect(!canAutoApprove(thread, { ...approval, iterationId: "old" }), "stale rounds cannot be approved");
+  expect(!canAutoApprove({ ...thread, runs: [{ ...thread.runs[0], iterations: [{ ...round, stage: "apply" }] }] }, approval), "risky writes retain their confirmation");
+  expect(canAutoApprove({ ...thread, runs: [{ ...run, status: "pending" }] }, { kind: "run", messageId: "start", runId: run.id }), "pending work can start automatically");
+  expect(canAutoApprove({ ...thread, runs: [{ ...thread.runs[0], iterations: [{ ...round, approval: "next", stage: "judge" }] }] }, { ...approval, phase: "next" }), "the same work item may continue automatically");
+  expect(thread.brief && !canAutoApprove(thread, { kind: "revise", messageId: "revise", brief: thread.brief, source: "new scope" }), "scope changes remain explicit");
 });

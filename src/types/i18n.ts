@@ -1,6 +1,7 @@
 import type { Autonomy, RunStatus, SeatRole } from "../agent-core/types";
 import type { ErrorMessages } from "./errors";
 import type { GitFileStatus } from "./git";
+import type { ModelStreamOutcome, ModelStreamPhase } from "./modelActivity";
 
 export type Locale = "zh" | "ja" | "en";
 
@@ -97,12 +98,24 @@ export interface Messages {
     tabGroupLabel: string;
     pendingConfirmBanner: string;
     runningStatus: string;
+    modelActivity: {
+      phase: Record<ModelStreamPhase, string>;
+      outcome: Record<ModelStreamOutcome, string>;
+      endedWorking: string;
+      endedAwaitingApproval: string;
+      awaitingApproval: string;
+      details: Record<ModelStreamPhase, (count: number) => string>;
+      local: string;
+      rate: (value: string) => string;
+      rateHint: string;
+    };
     emptyProjectHeading: string;
     emptyWithWorkspaceHint: string;
     emptyWithoutWorkspaceHint: string;
     compactEmptyHint: string;
     pickReferenceFile: string;
     queuedLabel: string;
+    submittedLabel: string;
     attachmentsLabel: string;
     confirmAcceptDefault: string;
     confirmDeclineDefault: string;
@@ -132,6 +145,15 @@ export interface Messages {
     mockTags: Record<string, string>;
     stop: string;
     send: string;
+    sending: string;
+    sendFailed: (reason: string) => string;
+    approval: {
+      manual: string;
+      automatic: string;
+      automaticHint: string;
+      checks: (workspace: string) => string;
+      manualChanges: string;
+    };
   };
 
   editor: {

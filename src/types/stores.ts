@@ -1,5 +1,5 @@
 import type { ProviderConfig } from "../agent-core/provider/presets";
-import type { SilverState } from "../agent-core/silverState";
+import type { DesktopSnapshot, SilverState } from "../agent-core/silverState";
 import type { Brief, ChatDraft, Thread, WorkspaceSummary } from "../agent-core/types";
 import type { ComposerAttachment, ComposerPrompt } from "./composer";
 import type { EditorTabState, FilePreview } from "./editor";
@@ -103,8 +103,10 @@ export interface LayoutStore {
 
 export interface RuntimeStore {
   revision: number;
+  stateRevision?: number;
   state: SilverState;
   busyThreads: string[];
+  modelActivity?: DesktopSnapshot["modelActivity"];
   workspaceVersions?: Record<string, number>;
   currentThread: Thread | null;
   connection: DesktopConnection;
@@ -126,6 +128,7 @@ export interface RuntimeStore {
   retryRun: (threadId: string, runId: string) => void;
   updateBrief: (threadId: string, brief: Brief) => void;
   resolveConfirmation: (threadId: string, messageId: string, accepted: boolean) => void;
+  setAutoApproval: (threadId: string, enabled: boolean, workspaceId?: string) => void;
   promoteThread: (threadId: string) => void;
   patchFinding: (threadId: string, finding: string) => void;
   bindWorkspace: (threadId: string, workspace: WorkspaceSummary) => void;

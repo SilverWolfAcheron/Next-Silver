@@ -16,11 +16,13 @@ import {
   MIN_TEXTAREA_HEIGHT,
 } from "../constants/composer";
 import { WORKSPACE_PATH_MIME } from "../constants/workspace";
+import { formatLocalizedText } from "../i18n/errors";
 import { searchWorkspaceFiles, workspaceErrorText } from "../services/workspaceClient";
 import { useComposerStore } from "../stores/composerStore";
 import { useRuntimeStore } from "../stores/runtimeStore";
 import type {
   ComposerAttachment,
+  ComposerMenu,
   ComposerPrompt,
   DraftEntry,
   MentionQuery,
@@ -40,8 +42,8 @@ export function useComposerDraft(
   formRef: RefObject<HTMLFormElement | null>;
   textareaRef: RefObject<HTMLTextAreaElement | null>;
   draft: ChatDraft;
-  menu: "preset" | "model" | null;
-  setMenu: Dispatch<SetStateAction<"preset" | "model" | null>>;
+  menu: ComposerMenu;
+  setMenu: Dispatch<SetStateAction<ComposerMenu>>;
   query: MentionQuery | null;
   setQuery: Dispatch<SetStateAction<MentionQuery | null>>;
   matches: WorkspaceEntry[];
@@ -99,9 +101,9 @@ export function useComposerDraft(
     entry.value
   );
   const [menu, setMenu]: [
-    "preset" | "model" | null,
-    Dispatch<SetStateAction<"preset" | "model" | null>>
-  ] = useState<"preset" | "model" | null>(null);
+    ComposerMenu,
+    Dispatch<SetStateAction<ComposerMenu>>
+  ] = useState<ComposerMenu>(null);
   const [matches, setMatches]: [WorkspaceEntry[], Dispatch<SetStateAction<WorkspaceEntry[]>>] =
     useState<WorkspaceEntry[]>([]);
   const [query, setQuery]: [MentionQuery | null, Dispatch<SetStateAction<MentionQuery | null>>] =
@@ -320,6 +322,7 @@ export function useComposerDraft(
       const save: Promise<void> | undefined = flush();
       await save?.catch((): undefined => undefined);
       await submitComposer(id, submitted);
+      setDraftError("");
       if (entry.value === submitted) {
         entry.value = createEmptyDraft(workspaceId);
         entry.dirty = false;
@@ -333,7 +336,7 @@ export function useComposerDraft(
       setMenu(null);
       textareaRef.current?.focus();
     } catch (error: unknown) {
-      setDraftError(workspaceErrorText(error));
+      setDraftError(t.composer.sendFailed(formatLocalizedText(workspaceErrorText(error), t)));
     } finally {
       submitting.current = false;
       setSending(false);

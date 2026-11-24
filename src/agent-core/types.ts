@@ -58,6 +58,7 @@ export interface Iteration {
   attempt?: string;
   checkSequence?: number;
   checksApprovedWorkspaceId?: string;
+  checksApprovedAutomatically?: boolean;
   checkAwaitingWorkspaceId?: string;
   replyId?: string;
 }
@@ -167,6 +168,7 @@ export interface Thread {
   updatedAt?: number;
   titleEdited?: boolean;
   pendingConfirmation?: PendingConfirmation;
+  autoApproval?: { workspaceId?: string };
   pendingPlan?: { messageId: string; revised: boolean };
   queuedMessages?: ChatMessage[];
   draft?: ChatDraft;

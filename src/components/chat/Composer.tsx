@@ -13,6 +13,7 @@ import type { ModelMenuState } from "../../types/composer";
 import type { RuntimeStore } from "../../types/stores";
 import { makeComposerScope, resolveModelMenuState } from "../../utils/composerData";
 import { Pill } from "../common/Pill";
+import { ApprovalSelector } from "./ApprovalSelector";
 import { MentionMenu } from "./MentionMenu";
 import { ModeSelector } from "./ModeSelector";
 import { ModelSelector } from "./ModelSelector";
@@ -175,6 +176,13 @@ function ScopedComposer({ scope, thread }: { scope: string; thread: Thread | nul
             }}
           />
 
+          {thread && (
+            <ApprovalSelector thread={thread} open={menu === "approval"} onToggle={(): void => {
+              setQuery(null);
+              setMenu(menu === "approval" ? null : "approval");
+            }} />
+          )}
+
           <div className="ml-auto flex items-center gap-1.5">
             {generating && id && (
               <Pill type="button" className="h-8 px-3 text-[12px]" onClick={(): void => { stop(id); }}>
@@ -186,7 +194,7 @@ function ScopedComposer({ scope, thread }: { scope: string; thread: Thread | nul
               disabled={!draft.text.trim() || sending}
               className="inline-flex h-8 items-center justify-center rounded-full border border-[color-mix(in_srgb,var(--color-accent)_80%,#1f1712)] bg-gradient-to-b from-[color-mix(in_srgb,var(--color-accent)_96%,#f6efe2)] to-[color-mix(in_srgb,var(--color-accent)_90%,#1f1712)] px-4 text-[13px] font-medium text-on-accent shadow-[inset_0_1px_0_rgba(255,245,230,0.1),inset_0_-1.5px_0_rgba(31,20,13,0.18),0_1px_3px_rgba(24,16,10,0.28),0_3px_8px_rgba(24,16,10,0.14)] transition-[transform,filter,box-shadow,opacity] duration-150 hover:brightness-[1.03] active:translate-y-[0.5px] active:brightness-95 active:shadow-[inset_0_1px_2px_rgba(31,20,13,0.24),0_1px_1px_rgba(24,16,10,0.18)] disabled:translate-y-0 disabled:opacity-45 disabled:shadow-none disabled:hover:brightness-100"
             >
-              {t.composer.send}
+              <span aria-live="polite">{sending ? t.composer.sending : t.composer.send}</span>
             </button>
           </div>
         </div>

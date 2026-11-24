@@ -5,6 +5,7 @@ export interface ChatInput {
   model: string;
   messages: { role: "user" | "assistant" | "system"; content: string }[];
   signal?: AbortSignal;
+  onAccepted?: () => void;
 }
 
 export interface ModelClient {
@@ -144,7 +145,9 @@ interface ServerEvent {
   data: string;
 }
 
-export async function* streamEvents(response: Response, signal?: AbortSignal): AsyncIterable<ServerEvent> {
+export async function* streamEvents(
+  response: Response, signal?: AbortSignal, onAccepted?: () => void
+): AsyncIterable<ServerEvent> {
   if (!response.body) {
     throw new ProviderError("response", ERROR_CODES.API_STREAM_MISSING);
   }
@@ -155,6 +158,7 @@ export async function* streamEvents(response: Response, signal?: AbortSignal): A
   let type: string = "";
   let done: boolean = false;
   try {
+    if (response.headers.get("content-type")?.toLowerCase().includes("text/event-stream")) onAccepted?.();
     while (!done) {
       const chunk: ReadableStreamReadResult<Uint8Array<ArrayBuffer>> = await reader.read();
       done = chunk.done;

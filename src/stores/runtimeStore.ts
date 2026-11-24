@@ -78,15 +78,19 @@ export function createRuntimeStore(
                   : { connection: "ready", connectionError: "" };
               }
               updated = true;
+              const stateChanged: boolean = next.stateRevision === undefined || next.stateRevision !== current.stateRevision;
               return {
                 revision: next.revision,
-                state: next.state,
+                stateRevision: next.stateRevision,
+                state: stateChanged ? next.state : current.state,
                 busyThreads: next.busyThreads,
+                modelActivity: next.modelActivity,
                 workspaceVersions: next.workspaceVersions,
-                currentThread:
-                  next.state.threads.find(
+                currentThread: stateChanged
+                  ? next.state.threads.find(
                     ({ id }: Thread): boolean => id === next.state.currentThreadId
-                  ) ?? null,
+                  ) ?? null
+                  : current.currentThread,
                 connection: "ready",
                 connectionError: "",
               };
@@ -176,6 +180,8 @@ export function createRuntimeStore(
           runAction("updateBrief", threadId, brief),
         resolveConfirmation: (threadId: string, messageId: string, accepted: boolean): void =>
           runAction("resolveConfirmation", threadId, messageId, accepted),
+        setAutoApproval: (threadId: string, enabled: boolean, workspaceId?: string): void =>
+          runAction("setAutoApproval", threadId, enabled, workspaceId),
         promoteThread: (threadId: string): void => runAction("promoteThread", threadId),
         patchFinding: (threadId: string, finding: string): void =>
           runAction("patchFinding", threadId, finding),

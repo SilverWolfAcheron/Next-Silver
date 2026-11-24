@@ -142,6 +142,7 @@ export const zhErrors: ErrorMessages = {
   WORKSPACE_SEARCH_QUERY_EMPTY: "搜索文字为空。",
   WORKSPACE_TOOL_UNAVAILABLE: "此操作不可用。可以列出目录、读取文件或搜索文字。",
   WORKSPACE_DRAFT_MISMATCH: "工作区已更换，请重新选择附件。",
+  WORKSPACE_APPROVAL_MISMATCH: "工作区已更换，请重新选择审批方式。",
   WORKSPACE_DRAFT_TOO_LONG: "对话草稿不能超过 100,000 个字符。",
   WORKSPACE_SWITCH_WHILE_RUNNING: "请先停止该对话的工作项，再更换工作区。",
   WORKSPACE_NO_WRITABLE_THREAD: "当前工作区没有可写文稿的对话。",

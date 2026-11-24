@@ -12,7 +12,7 @@ import type { ProviderConfig } from "../src/agent-core/provider/presets";
 import type { Artifact, Brief, ChatDraft, Iteration, Run, Thread, WorkspaceSummary } from "../src/agent-core/types";
 import { describeProviderError } from "../src/agent-core/provider/client";
 import { createConversation } from "./conversation";
-import type { ConversationService } from "./conversation";
+import type { ConversationService } from "./conversationHelpers";
 import { createRequestJournal } from "./journal";
 import type { RequestJournal } from "./journal";
 import {
@@ -80,13 +80,15 @@ export function createRuntime(
   const workspaceVersions: Map<string, number> = new Map();
   let workspacePublish: ReturnType<typeof setTimeout> | undefined;
   let revision: number = Date.now() * 1_000;
+  let stateRevision: number = revision;
   let closing: boolean = false;
 
   function getState(): DesktopSnapshot {
     const state: SilverState = latest.current;
     return {
-      revision, workspaceVersions: Object.fromEntries(workspaceVersions),
+      revision, stateRevision, workspaceVersions: Object.fromEntries(workspaceVersions),
       busyThreads: state.threads.filter(({ id }: Thread): boolean => conversation.isGenerating(id)).map(({ id }: Thread): string => id),
+      modelActivity: conversation.modelActivity(),
       state: {
         ...state,
         providers: state.providers.map((provider: ProviderConfig): ProviderConfig => ({ ...provider, key: "", hasKey: Boolean(provider.key.trim()) })),
@@ -112,6 +114,7 @@ export function createRuntime(
     if (next === latest.current) return;
     onChange(next);
     latest.current = next;
+    stateRevision = revision + 1;
     watchWorkspaces();
     publish();
   }
@@ -298,13 +301,25 @@ export function createRuntime(
       case "updateBrief": return conversation.updateBrief(id(a), b as Brief);
       case "patchFinding": return conversation.patchFinding(id(a), text(b));
       case "resolveConfirmation": return conversation.resolveConfirmation(id(a), id(b), c === true);
+      case "setAutoApproval": {
+        const thread: Thread = find(id(a));
+        const enabled: boolean = b === true;
+        if (enabled && (c ?? undefined) !== thread.workspace?.id) throw new AppError(ERROR_CODES.WORKSPACE_APPROVAL_MISMATCH);
+        edit(thread.id, (current: Thread): Thread => ({
+          ...current, autoApproval: enabled ? { workspaceId: current.workspace?.id } : undefined,
+        }));
+        if (enabled) conversation.resumeQueued(thread.id);
+        return;
+      }
       case "stop": return conversation.stop(id(a));
       case "bindWorkspace": {
         const thread: Thread = find(id(a));
         if (conversation.isGenerating(thread.id)) throw new AppError(ERROR_CODES.WORKSPACE_SWITCH_WHILE_RUNNING);
         const checked: WorkspaceSummary = await workspace(id(b));
+        if (conversation.isGenerating(thread.id)) throw new AppError(ERROR_CODES.WORKSPACE_SWITCH_WHILE_RUNNING);
         return edit(thread.id, (current: Thread): Thread => ({
           ...current, workspace: checked, draft: current.workspace?.id === checked.id ? current.draft : undefined,
+          autoApproval: current.workspace?.id === checked.id ? current.autoApproval : undefined,
           updatedAt: Date.now(),
         }));
       }

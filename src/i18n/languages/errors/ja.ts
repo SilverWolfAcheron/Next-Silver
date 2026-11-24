@@ -142,6 +142,7 @@ export const jaErrors: ErrorMessages = {
   WORKSPACE_SEARCH_QUERY_EMPTY: "検索語句が空です。",
   WORKSPACE_TOOL_UNAVAILABLE: "この操作は利用できません。一覧・読み込み・検索のみ対応します。",
   WORKSPACE_DRAFT_MISMATCH: "ワークスペースが切り替わりました。添付ファイルを選び直してください。",
+  WORKSPACE_APPROVAL_MISMATCH: "ワークスペースが切り替わりました。承認方法を選び直してください。",
   WORKSPACE_DRAFT_TOO_LONG: "下書きは 100,000 文字以内にしてください。",
   WORKSPACE_SWITCH_WHILE_RUNNING: "先にこの会話の作業項目を停止してからワークスペースを変更してください。",
   WORKSPACE_NO_WRITABLE_THREAD: "現在のワークスペースにドキュメントを書き込める会話がありません。",

@@ -84,7 +84,7 @@ export class GeminiClient implements ModelClient {
     });
 
     let finished: boolean = false;
-    for await (const event of streamEvents(response, input.signal)) {
+    for await (const event of streamEvents(response, input.signal, input.onAccepted)) {
       const chunk: GenerateChunk = readStreamEvent<GenerateChunk>(event);
       if (chunk.promptFeedback?.blockReason && chunk.promptFeedback.blockReason !== "BLOCK_REASON_UNSPECIFIED") {
         throw new ProviderError("stream", ERROR_CODES.API_CONTENT_FILTERED);

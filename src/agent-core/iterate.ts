@@ -64,6 +64,7 @@ export function isIteration(value: unknown): value is Iteration {
     (value.attempt === undefined || isText(value.attempt)) &&
     (value.checkAwaitingWorkspaceId === undefined || isText(value.checkAwaitingWorkspaceId)) &&
     (value.checksApprovedWorkspaceId === undefined || isText(value.checksApprovedWorkspaceId)) &&
+    (value.checksApprovedAutomatically === undefined || typeof value.checksApprovedAutomatically === "boolean") &&
     (value.checkSequence === undefined || (typeof value.checkSequence === "number" &&
       Number.isSafeInteger(value.checkSequence) && value.checkSequence >= 0)) &&
     (value.writes === undefined || (Array.isArray(value.writes) && value.writes.every((entry: unknown): boolean =>

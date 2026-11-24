@@ -60,7 +60,7 @@ export class OpenAIClient implements ModelClient {
     });
 
     let finished: boolean = false;
-    for await (const event of streamEvents(response, input.signal)) {
+    for await (const event of streamEvents(response, input.signal, input.onAccepted)) {
       if (event.data === "[DONE]") return;
       const chunk: CompletionChunk = readStreamEvent<CompletionChunk>(event);
       const choice: CompletionChoice | undefined = chunk.choices?.[0];
