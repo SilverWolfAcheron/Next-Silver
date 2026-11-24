@@ -79,6 +79,7 @@ export function createConversationFlow(kernel: ConversationKernel): Conversation
     startChat,
     cancelJob,
     confirm,
+    resolveConfirmation,
     retryOrStart,
     sendMessage,
   }: ConversationKernel = kernel;
@@ -134,7 +135,14 @@ export function createConversationFlow(kernel: ConversationKernel): Conversation
       [
         "从对话提取简报。已给出的信息填入对应字段。保留已有需求编号，遗漏的信息不要伪造。没有额外约束时可把假设「无额外约束」填入。目标、完成标准、约束、自主度是必填项。仅询问会改变计划的空项，最多四条。已回答或明确待定的字段不重复询问。",
         "如果领域字段有关联编号，已有对应需求时保持编号。将默认自主度写入简报，并把真正采用的假设放入 assumptions。",
-        `先流式输出给用户的简短正文，随后在独立一行输出 <<<SILVER_RESULT>>>，接一个 JSON 对象：${INTAKE_SCHEMA}。JSON 外不加代码围栏。`,
+        thread.workspace
+          ? [
+            "当前会话已绑定本地工作区。用户要求读文件夹、梳理项目或核对代码时，先用工具读取相关内容，再根据结果回答。即使之前的回复说无法读取，也请先以本次工具结果为准。",
+            '需要读取时只返回工具 JSON，例如 {"tools":[{"name":"project","path":""}]}。收到结果后可继续读取目录、README 和入口。若读取失败，说明具体失败原因。',
+            CODING_TOOL_GUIDE,
+          ].join("\n")
+          : "当前会话未绑定本地工作区。只有任务需要访问本地文件时，才请用户在 Silver 中选择并绑定项目文件夹。",
+        `完成读取或无需读取时，先流式输出给用户的正文，随后在独立一行输出 <<<SILVER_RESULT>>>，接一个 JSON 对象：${INTAKE_SCHEMA}。JSON 外不加代码围栏。`,
       ].join("\n"),
       message.id
     );
@@ -143,21 +151,31 @@ export function createConversationFlow(kernel: ConversationKernel): Conversation
     let result: Awaited<ReturnType<typeof streamResult>> | undefined = undefined;
     try {
       const messages: ModelMessage[] = [...prompt, ...(await attachedFiles(thread, message.id))];
-      result = await streamResult({
-        client,
-        request,
-        messages,
-        structured: true,
-        onDelta: (delta: string): void => {
-          if (!request.signal.aborted) {
-            editMessage(thread.id, reply.id, (entry: ChatMessage): ChatMessage => ({
-              ...entry,
-              text: (first ? "" : entry.text) + delta,
-            }));
-          }
-          first = false;
-        },
+      const loop: ReturnType<typeof createWorkspaceToolLoop> = createWorkspaceToolLoop(thread, {
+        signal: request.signal,
+        limitError: (): SessionError => new SessionError(ERROR_CODES.SESSION_TOOL_LIMIT_EXCEEDED),
       });
+      for (;;) {
+        request.signal.throwIfAborted();
+        first = true;
+        result = await streamResult({
+          client,
+          request,
+          messages: loop.messages(messages),
+          structured: true,
+          onDelta: (delta: string): void => {
+            if (!request.signal.aborted) {
+              editMessage(thread.id, reply.id, (entry: ChatMessage): ChatMessage => ({
+                ...entry,
+                text: (first ? "" : entry.text) + delta,
+              }));
+            }
+            first = false;
+          },
+        });
+        if (!Array.isArray(result.tools) || !result.tools.length) break;
+        await loop.accept(result.tools);
+      }
       if (!result.brief) throw new SessionError(ERROR_CODES.SESSION_BRIEF_MISSING);
     } catch (error: unknown) {
       if (!request.signal.aborted && isTransientProviderError(error)) throw error;
@@ -191,7 +209,7 @@ export function createConversationFlow(kernel: ConversationKernel): Conversation
     editMessage(thread.id, reply.id, (entry: ChatMessage): ChatMessage => ({
       ...entry,
       text:
-        entry.text.trim() ||
+        (!first && entry.text.trim()) ||
         modelString(result.reply) ||
         (questions.length ? "还有几项需要确认。" : "已整理简报。"),
       assumptions,
@@ -590,10 +608,15 @@ export function createConversationFlow(kernel: ConversationKernel): Conversation
     const thread: Thread | undefined = find(threadId);
     if (
       !thread ||
-      thread.pendingConfirmation ||
       jobs.current.get(threadId)?.has("chat") ||
       !providerFor(thread)
     ) {
+      return;
+    }
+    if (thread.pendingConfirmation) {
+      if (thread.pendingConfirmation.kind === "brief" && thread.queuedMessages?.length) {
+        resolveConfirmation(threadId, thread.pendingConfirmation.messageId, false);
+      }
       return;
     }
     if (thread.pendingPlan) {

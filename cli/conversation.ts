@@ -357,6 +357,7 @@ export function createConversation(deps: ConversationDeps): ConversationService 
     startChat,
     cancelJob,
     confirm,
+    resolveConfirmation,
     retryOrStart,
     sendMessage,
   });

@@ -100,6 +100,7 @@ export interface ConversationKernel {
   startChat: (options: StartChatOptions) => boolean;
   cancelJob: (threadId: string, key: string) => void;
   confirm: (options: ConfirmOptions) => void;
+  resolveConfirmation: (threadId: string, messageId: string, accepted: boolean) => void;
   retryOrStart: (threadId: string, runId: string) => void;
   sendMessage: (options: SendMessageOptions) => void;
 }

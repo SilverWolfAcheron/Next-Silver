@@ -32,6 +32,7 @@ test("desktop CLI runs six rounds, reattaches, and resumes active seats without 
   await mkdir(workspace);
   await writeFile(join(workspace, "source.txt"), "round-0\r\n");
   await writeFile(join(workspace, "review.txt"), "independent context\r\n");
+  await writeFile(join(workspace, "README.md"), "# Local fixture\nThis project verifies six rounds.\n");
   await writeFile(join(workspace, "package.json"), JSON.stringify({
     name: "silver-native-check-fixture", version: "1.0.0",
     scripts: { test: "node check.cjs test", typecheck: "node check.cjs types", build: "node check.cjs build" },
@@ -51,6 +52,7 @@ test("desktop CLI runs six rounds, reattaches, and resumes active seats without 
   let secondConnection;
   let heldDisconnects = 0;
   let toolReads = 0;
+  let intakeReads = 0;
   let checksReachedNextRound = false;
   let firstDraftRepaired = false;
   let gameError;
@@ -70,7 +72,20 @@ test("desktop CLI runs six rounds, reattaches, and resumes active seats without 
       response.writeHead(200, { "Content-Type": "text/event-stream" });
       const send = (value) => response.end(events(JSON.stringify(value)) + "data: [DONE]\n\n");
       if (system.includes("从对话提取简报")) {
-        response.end(events("简报。\n<<<SILVER_RESULT>>>\n" + JSON.stringify({ brief: plan })) + "data: [DONE]\n\n");
+        assert.match(system, /当前会话已绑定本地工作区/u);
+        const requested = payload.messages.filter(({ content }) => content.includes("工具结果。以下是工作区数据")).length;
+        if (requested === 0) {
+          intakeReads++;
+          send({ tools: [{ name: "project", path: "" }] });
+        } else if (requested === 1) {
+          assert.match(userData, /silver-native-check-fixture/u);
+          intakeReads++;
+          send({ tools: [{ name: "read", path: "README.md" }] });
+        } else {
+          assert.match(userData, /This project verifies six rounds\./u);
+          const summary = userData.includes("继续读取项目文件夹") ? "已根据目录和 README 更新简报。" : "已读取目录和 README。";
+          response.end(events(summary + "\n<<<SILVER_RESULT>>>\n" + JSON.stringify({ brief: plan })) + "data: [DONE]\n\n");
+        }
       } else if (system.includes("按已确认简报拆工作项")) {
         send({ runs: [{ title: "检验持续工作", dependsOn: ["R1"], seats: [
           { id: "writer", title: "更新源文件", scope: ["source.txt"] },
@@ -260,7 +275,20 @@ test("desktop CLI runs six rounds, reattaches, and resumes active seats without 
     const brief = await until(async () => (await thread()).pendingConfirmation, "No brief confirmation");
     assert.equal((await thread()).draft, undefined);
     assert.deepEqual((await thread()).messages.find(({ role }) => role === "user").attachments, ["source.txt"]);
+    assert.equal(intakeReads, 2);
+    assert.ok((await thread()).messages.some(({ text }) => text === "已读取目录和 README。"));
+    await action("sendMessage", threadId, "继续读取项目文件夹");
     await action("resolveConfirmation", threadId, brief.messageId, true);
+    const updatedBrief = await until(async () => {
+      const current = (await thread()).pendingConfirmation;
+      return current?.messageId !== brief.messageId && current;
+    }, "Follow-up was queued behind the original brief instead of updating it");
+    assert.equal(updatedBrief.kind, "brief");
+    assert.equal(intakeReads, 4);
+    assert.equal((await thread()).queuedMessages.length, 0);
+    assert.equal((await thread()).runs.length, 0);
+    assert.ok((await thread()).messages.some(({ text }) => text === "已根据目录和 README 更新简报。"));
+    await action("resolveConfirmation", threadId, updatedBrief.messageId, true);
     await until(() => firstHeld, "First round was not held");
     select.abort();
     await until(async () => (await thread()).runs[0]?.seats.find(({ id }) => id === "writer")?.status === "completed", "Writer failed after window disconnected");
