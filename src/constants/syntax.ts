@@ -281,8 +281,6 @@ export const RUST_FORMAT_RE: RegExp = /(\{\{|\}\})|\{([A-Za-z_][A-Za-z0-9_]*|[0-
 export const STRING_ESCAPE_RE: RegExp =
   /(\\(?:\r\n|u\{[0-9a-fA-F]+\}|u[0-9a-fA-F]{4}|x[0-9a-fA-F]{2}|[0-7]{1,3}|.))|(%(?:[-+#0]*(?:\*|\d+)?(?:\.(?:\*|\d+))?[vTtbcdoqxXUeEfFgGspw%]))/gu;
 
-export const JSX_EXPR_RE: RegExp = /\{([^{}]+)\}/gu;
-
 export const JSX_MAX_DEPTH: number = 12;
 export const MARKDOWN_MAX_DEPTH: number = 2;
 

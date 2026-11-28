@@ -94,16 +94,3 @@ export const readWorkspaceGitDiff = (
 export function workspaceErrorText(error: unknown): string {
   return serializeErrorCode(error, ERROR_CODES.WORKSPACE_ACCESS_FAILED);
 }
-
-export function splitWorkspacePath(path: string): string[] {
-  const parts: string[] = path.split("/");
-  if (parts.some((part: string): boolean => {
-    const trimmed: string = part.trimEnd();
-    if (!trimmed || trimmed === "." || trimmed === ".." || /[:\\\p{Cc}]/u.test(part)) return true;
-    const basename: string = part.split(".", 1)[0].trimEnd();
-    return /[. ]$/u.test(part) || /^(?:con|prn|aux|nul|(?:com|lpt)[1-9¹²³])$/iu.test(basename);
-  })) {
-    throw new AppError(ERROR_CODES.WORKSPACE_INVALID_PATH);
-  }
-  return parts;
-}

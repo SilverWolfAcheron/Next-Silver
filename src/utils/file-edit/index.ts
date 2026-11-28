@@ -1,42 +1,5 @@
 export {
-  appendTextToContent,
-  countTextLines,
-  deleteLinesInText,
   detectLineEnding,
-  normalizeLineEndings,
-  replaceLinesInText,
   restoreLineEndings,
 } from "./textOps";
-export {
-  appendToFile,
-  createDirectory,
-  createFile,
-  deleteDirectory,
-  deleteFile,
-  deleteFileLines,
-  renameDirectory,
-  renameFile,
-  replaceFileContent,
-  replaceFileLines,
-} from "./workspaceOps";
-export type {
-  AppendFileParams,
-  CreateDirectoryParams,
-  CreateFileParams,
-  DeleteDirectoryParams,
-  DeleteFileLinesParams,
-  DeleteFileParams,
-  FileEditResult,
-  FilePathResult,
-  LineEnding,
-  RenamePathParams,
-  RenamePathResult,
-  ReplaceFileContentParams,
-  ReplaceFileLinesParams,
-  TextAppendParams,
-  TextAppendResult,
-  TextLineDeleteParams,
-  TextLineDeleteResult,
-  TextLineReplaceParams,
-  TextLineReplaceResult,
-} from "../../types/fileEdit";
+export { replaceFileContent } from "./workspaceOps";

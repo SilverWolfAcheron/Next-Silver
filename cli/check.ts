@@ -17,7 +17,7 @@ export function checkLabel(check: CheckName): string {
   return CHECK_LABELS[check];
 }
 
-export function isCheckName(value: unknown): value is CheckName {
+function isCheckName(value: unknown): value is CheckName {
   return CHECK_NAMES.some((check: CheckName): boolean => check === value);
 }
 

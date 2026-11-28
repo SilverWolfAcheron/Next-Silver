@@ -72,7 +72,14 @@ test("desktop CLI runs six rounds, reattaches, and resumes active seats without 
   let firstIntake;
   let checksReachedNextRound = false;
   let firstDraftRepaired = false;
+  let firstJudgmentInput;
+  let firstJudgments = 0;
+  let thirdJudgmentInput;
+  let thirdJudgments = 0;
+  let invalidJudgmentInput;
   let invalidJudgments = 0;
+  let invalidProductions = 0;
+  let allowInvalidJudgmentRetry = false;
   let gameError;
   const plan = {
     intent: "运行本机检查并通过修复", outcome: "完成六轮独立缺口",
@@ -109,8 +116,24 @@ test("desktop CLI runs six rounds, reattaches, and resumes active seats without 
       const send = (value) => response.end(events(JSON.stringify(value)) + "data: [DONE]\n\n");
       if (userData.includes("测试格式错误的迭代判断")) {
         if (system.includes("你负责判断同一工作项本轮结果")) {
-          send(invalidJudgments++ === 0 ? { verdict: "done" } : { verdict: "done", gaps: [], evidence: ["goal 已核对"] });
+          const input = payload.messages.at(-1).content;
+          invalidJudgments++;
+          if (invalidJudgments === 1) {
+            invalidJudgmentInput = input;
+            assert.doesNotMatch(system, /上一份判断未通过校验/u);
+            send({ verdict: "done" });
+          } else if (invalidJudgments === 2) {
+            assert.equal(input, invalidJudgmentInput);
+            assert.match(system, /上一份判断未通过校验/u);
+            send({ verdict: "done", gaps: [], evidence: [] });
+          } else {
+            assert.ok(allowInvalidJudgmentRetry, "allowed only one automatic judgment repair");
+            assert.equal(input, invalidJudgmentInput);
+            assert.doesNotMatch(system, /上一份判断未通过校验/u);
+            send({ verdict: "done", gaps: [], evidence: ["goal 已核对"] });
+          }
         } else {
+          invalidProductions++;
           send({ status: "completed", artifacts: [{ kind: "findings", title: "审查结果", body: "已核对本轮目标。" }] });
         }
         return;
@@ -135,14 +158,43 @@ test("desktop CLI runs six rounds, reattaches, and resumes active seats without 
           { id: "writer", title: "更新源文件", scope: ["source.txt"] },
           { id: "reviewer", title: "等待附加独立资料", scope: ["review.txt"] },
         ] }] });
+      } else if (system.includes("判断最新用户消息的用途")) {
+        const latest = payload.messages.at(-1).content;
+        if (latest === "现在在核对什么？") send({ intent: "chat", reply: "正在核对本轮检查结果。" });
+        else {
+          assert.equal(latest, "本轮补充说明：请保留原始检查输出。");
+          send({ intent: "steer", reply: "收到。" });
+        }
       } else if (system.includes("你负责判断同一工作项本轮结果")) {
-        const evidence = JSON.parse(payload.messages.at(-1).content);
+        const input = payload.messages.at(-1).content;
+        const evidence = JSON.parse(input);
         const number = evidence.checks[0].output.match(/RAW-test round-(\d+)/u)?.[1];
         assert.ok(number);
         assert.equal(evidence.checks.length, 3);
         if (number === "1") {
           assert.equal(evidence.checks[0].exitCode, 7);
           assert.match(evidence.checks[0].output, /REPAIR_FROM_TEST/u);
+          firstJudgments++;
+          if (firstJudgments === 1) {
+            firstJudgmentInput = input;
+            assert.doesNotMatch(system, /上一份判断未通过校验/u);
+            response.end(events('{"verdict":') + "data: [DONE]\n\n");
+            return;
+          }
+          assert.equal(firstJudgments, 2);
+          assert.equal(input, firstJudgmentInput);
+          assert.match(system, /上一份判断未通过校验/u);
+        }
+        if (number === "3") {
+          thirdJudgments++;
+          if (thirdJudgments === 1) {
+            thirdJudgmentInput = evidence;
+            response.flushHeaders();
+            return;
+          }
+          assert.deepEqual(evidence.checks, thirdJudgmentInput.checks);
+          assert.deepEqual(evidence.products, thirdJudgmentInput.products);
+          assert.deepEqual(evidence.supplements, ["本轮补充说明：请保留原始检查输出。"]);
         }
         send(Number(number) < 6 ? {
           verdict: "continue", gaps: [{ requirementId: "R1", missing: `缺口 ${number}` }],
@@ -408,6 +460,24 @@ test("desktop CLI runs six rounds, reattaches, and resumes active seats without 
     assert.equal((await thread()).runs[0].iterations.at(-1).stage, "checks");
     assert.doesNotMatch(await readFile(join(workspace, "checks.log"), "utf8"), /round-2/u);
     await action("setAutoApproval", threadId, true, bound.id);
+    await until(() => thirdJudgments === 1, "Third-round judgment never started");
+    await action("sendMessage", threadId, "你好");
+    const greeted = await until(async () => {
+      const current = await thread();
+      return current.messages.some(({ role, text }) => role === "assistant" && text === "你好！") && current;
+    }, "The greeting was not processed while the judgment was active");
+    assert.equal(thirdJudgments, 1);
+    assert.deepEqual(greeted.runs[0].supplements ?? [], []);
+    assert.ok((await activity()).operations.some(({ kind, status }) => kind === "judge" && status === "running"));
+    await action("sendMessage", threadId, "现在在核对什么？");
+    const discussed = await until(async () => {
+      const current = await thread();
+      return current.messages.some(({ role, text }) => role === "assistant" && text === "正在核对本轮检查结果。") && current;
+    }, "A question about progress was not answered while the judgment was active");
+    assert.equal(thirdJudgments, 1);
+    assert.deepEqual(discussed.runs[0].supplements ?? [], []);
+    assert.ok((await activity()).operations.some(({ kind, status }) => kind === "judge" && status === "running"));
+    await action("sendMessage", threadId, "本轮补充说明：请保留原始检查输出。");
     const completed = await until(async () => {
       const current = await thread();
       return current.runs[0]?.status === "completed" && current;
@@ -417,6 +487,8 @@ test("desktop CLI runs six rounds, reattaches, and resumes active seats without 
     assert.equal(completed.runs.length, 1);
     assert.equal(completed.runs[0].iterations.length, 6);
     assert.equal(completed.runs[0].iterations.at(-1).verdict, "done");
+    assert.equal(firstJudgments, 2);
+    assert.equal(thirdJudgments, 2);
     assert.ok((await call("/state")).workspaceVersions[bound.id] > 0);
     assert.equal(completed.artifacts.filter(({ title }) => title === "npm test").length, 6);
     assert.equal(await readFile(join(workspace, "source.txt"), "utf8"), "round-6\r\n");
@@ -435,9 +507,19 @@ test("desktop CLI runs six rounds, reattaches, and resumes active seats without 
     const invalidState = async () => (await call("/state")).state.threads.find(({ id }) => id === invalidThread);
     const failure = await until(async () => (await invalidState()).messages.find(({ error }) => error === "ITERATION_JUDGMENT_INVALID"), "The judge error was not reported as a localizable error");
     assert.equal(failure.text, "");
+    assert.equal(invalidJudgments, 2);
+    const blocked = (await invalidState()).runs.find(({ id }) => id === failure.retryRunId);
+    assert.equal(blocked.status, "blocked");
     assert.ok((await call("/state")).modelActivity[invalidThread].operations.some(({ kind, status }) => kind === "judge" && status === "failed"));
+    allowInvalidJudgmentRetry = true;
     await action("retryRun", invalidThread, failure.retryRunId);
-    await until(async () => (await invalidState()).runs.find(({ id }) => id === failure.retryRunId)?.status === "completed", "Retry did not resume the blocked work item");
+    const retried = await until(async () => {
+      const run = (await invalidState()).runs.find(({ id }) => id === failure.retryRunId);
+      return run?.status === "completed" && run;
+    }, "Retry did not resume the blocked work item");
+    assert.deepEqual(retried.iterations.map(({ id }) => id), blocked.iterations.map(({ id }) => id));
+    assert.equal(invalidJudgments, 3);
+    assert.equal(invalidProductions, 1);
     const finished = once(newHost, "exit");
     await call("/shutdown", {});
     await finished;

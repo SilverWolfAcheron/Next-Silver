@@ -98,7 +98,6 @@ export interface LayoutStore {
   setAgentTab: (tab: AgentTab) => void;
   setSearchMode: (mode: WorkspaceSearchMode | null) => void;
   setFocusedArtifactId: (artifactId: string | null) => void;
-  closeOverlays: () => void;
 }
 
 export interface RuntimeStore {
@@ -117,8 +116,6 @@ export interface RuntimeStore {
   clearError: () => void;
   dispatch: (action: UIAction) => void;
   newThread: (presetId: string) => void;
-  openSample: () => void;
-  isGenerating: (threadId: string) => boolean;
   stop: (threadId: string) => boolean;
   submitComposer: (threadId: string | undefined, draft: ChatDraft) => Promise<void>;
   saveDraft: (threadId: string, draft: ChatDraft) => Promise<void>;
@@ -129,9 +126,7 @@ export interface RuntimeStore {
   updateBrief: (threadId: string, brief: Brief) => void;
   resolveConfirmation: (threadId: string, messageId: string, accepted: boolean) => void;
   setAutoApproval: (threadId: string, enabled: boolean, workspaceId?: string) => void;
-  promoteThread: (threadId: string) => void;
   patchFinding: (threadId: string, finding: string) => void;
-  bindWorkspace: (threadId: string, workspace: WorkspaceSummary) => void;
   openFolder: () => Promise<void>;
   attachWorkspace: (workspace: WorkspaceSummary) => Promise<void>;
   acceptFile: (params: AcceptFileParams) => Promise<void>;

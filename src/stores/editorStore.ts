@@ -9,7 +9,7 @@ const defaultDeps: EditorStoreDeps = {
   readWorkspaceFile,
 };
 
-export function createEditorStore(
+function createEditorStore(
   deps: EditorStoreDeps = defaultDeps
 ): UseBoundStore<StoreApi<EditorStore>> {
   let previewRequest: AbortController | undefined = undefined;

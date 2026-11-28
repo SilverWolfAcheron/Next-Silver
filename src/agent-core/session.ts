@@ -71,7 +71,7 @@ export async function askModel(
   return readReply(response);
 }
 
-export interface StreamResultOptions {
+interface StreamResultOptions {
   client: ModelClient;
   request: ModelRequest;
   messages: ModelMessage[];

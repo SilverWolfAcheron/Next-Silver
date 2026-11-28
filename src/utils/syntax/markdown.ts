@@ -32,7 +32,7 @@ function splitLinesPreservingEndings(source: string): string[] {
   return lines;
 }
 
-export function resolveMarkdownFenceLanguage(rawInfo: string): string | null {
+function resolveMarkdownFenceLanguage(rawInfo: string): string | null {
   const trimmed: string = rawInfo.trim();
   if (!trimmed) return null;
   const infoMatch: RegExpExecArray | null = MARKDOWN_FENCE_INFO_RE.exec(trimmed);

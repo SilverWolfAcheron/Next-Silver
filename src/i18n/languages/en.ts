@@ -229,7 +229,6 @@ export const enMessages: Messages = {
     openFolder: "Open folder",
     desktopOnlyHint: "Open a local folder in the Silver desktop app.",
     noFolderHint: "No folder opened yet.",
-    treeLabel: "Project files",
     loading: "Loading…",
     reconnecting: "Reconnecting…",
     reconnect: "Reconnect",
@@ -274,8 +273,6 @@ export const enMessages: Messages = {
     modelPlaceholder: "Select or enter model ID",
     testing: "Testing…",
     testConnection: "Test",
-    saveFailed: "Failed to save provider.",
-    connectFailed: "Provider connection failed.",
     modelsFetched: (count: number): string => `Connected — loaded ${count} models.`,
     noModelsReturned: "Connected, but no models were returned.",
   },
@@ -291,8 +288,6 @@ export const enMessages: Messages = {
     },
     emptyBrief: "The brief will appear once the goal is clarified",
     emptyProgress: "Work items will appear once dispatched",
-    emptyArtifact: "No artifacts yet",
-    promoteToProject: "Promote to Project",
   },
 
   brief: {
@@ -392,7 +387,6 @@ export const enMessages: Messages = {
     truncatedWorkspace: "Many untracked files detected — some entries were truncated.",
     filesSummary: (count: number): string => `${count} changed file${count === 1 ? "" : "s"}`,
     changedTreeEmpty: "No changed files",
-    changedTreeHeader: (count: number): string => `Changes (${count})`,
     agentArtifactLabel: "Agent Patch",
     agentArtifactFiles: (count: number): string => `${count} file${count === 1 ? "" : "s"}`,
     agentArtifactSettled: "Settled",

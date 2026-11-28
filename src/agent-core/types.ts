@@ -5,9 +5,9 @@ export type InspectorTab = "brief" | "progress" | "artifact";
 export type Intent = "steer" | "revise" | "patch";
 export type RunStatus = "pending" | "in_progress" | "completed" | "blocked" | "paused";
 export type Protocol = "openai" | "anthropic" | "gemini";
-export type ArtifactKind = "diff" | "doc" | "findings";
+type ArtifactKind = "diff" | "doc" | "findings";
 export type SeatRole = "develop" | "audit";
-export type SeatStatus = RunStatus;
+type SeatStatus = RunStatus;
 export type AuditVerdict = "refuted" | "retained";
 export type IterationVerdict = "continue" | "done" | "blocked";
 
@@ -129,7 +129,6 @@ export type PendingConfirmation = { messageId: string } & (
   | { kind: "revise"; brief: Brief; source: string }
   | { kind: "preset"; presetId: string }
   | { kind: "run"; runId: string }
-  | { kind: "promote" }
   | { kind: "iteration"; runId: string; iterationId: string; phase: "apply" | "next" }
 );
 
@@ -143,7 +142,7 @@ export interface Artifact {
   workspaceId?: string;
 }
 
-export type IntakeStep = "questioning" | "confirmed" | "done";
+type IntakeStep = "questioning" | "confirmed" | "done";
 
 export interface ChatDraft {
   text: string;
@@ -175,15 +174,6 @@ export interface Thread {
   draft?: ChatDraft;
   activeRequest?: { kind: "message" | "plan"; messageId: string; attempt: string; revised?: boolean; replyId?: string };
   workspace?: WorkspaceSummary;
-}
-
-export interface ProviderPreset {
-  id: string;
-  label: string;
-  protocol: Protocol;
-  baseUrl?: string;
-  key: string;
-  model: string;
 }
 
 export interface AppearanceState {

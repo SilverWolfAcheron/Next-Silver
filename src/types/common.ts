@@ -34,14 +34,6 @@ export interface ProgressBarProps {
   className?: string;
 }
 
-export interface SideRowProps {
-  label: string;
-  selected?: boolean;
-  meta?: string;
-  icon?: ReactNode;
-  onClick?: () => void;
-}
-
 export interface ResizeHandleProps {
   label: string;
   tooltip: string;

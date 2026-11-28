@@ -7,7 +7,7 @@ import { zhMessages } from "./languages/zh.ts";
 export { LOCALE_OPTIONS };
 export type { Locale, Messages };
 
-export const MESSAGES_BY_LOCALE: Record<Locale, Messages> = {
+const MESSAGES_BY_LOCALE: Record<Locale, Messages> = {
   zh: zhMessages,
   ja: jaMessages,
   en: enMessages,

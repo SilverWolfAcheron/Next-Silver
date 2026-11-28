@@ -1,6 +1,6 @@
 import type { ComposerModeItem } from "../types/composer";
 
-export const COMPOSER_LINE_HEIGHT: number = 22;
+const COMPOSER_LINE_HEIGHT: number = 22;
 export const MIN_TEXTAREA_HEIGHT: number = COMPOSER_LINE_HEIGHT * 2;
 export const MAX_TEXTAREA_HEIGHT: number = COMPOSER_LINE_HEIGHT * 5;
 export const MAX_COMPOSER_ATTACHMENTS: number = 8;

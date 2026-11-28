@@ -2,7 +2,6 @@ import { initialState, makeThread, reduceSilver } from "../src/agent-core/silver
 import type { Action, DesktopSnapshot, SilverState } from "../src/agent-core/silverState";
 import { AppError, ERROR_CODES } from "../src/agent-core/errors";
 import type { ErrorCode } from "../src/types/errors";
-import { SAMPLE_PCB_THREAD } from "../src/mocks/samples";
 import { importThreads } from "../src/agent-core/localData";
 import { getPreset } from "../src/agent-core/presets";
 import { applyDiff, decideDiffFile, diffNeedsConfirmation, diffPolicyError, isDiffPath, parseDiff } from "../src/utils/diff";
@@ -264,11 +263,6 @@ export function createRuntime(
     switch (name) {
       case "dispatch": return uiDispatch(a);
       case "newThread": return newThread(text(a)).id;
-      case "openSample":
-        if (latest.current.threads.some(({ id }: Thread): boolean => id === SAMPLE_PCB_THREAD.id)) {
-          return commit({ type: "SELECT_THREAD", id: SAMPLE_PCB_THREAD.id });
-        }
-        return commit({ type: "NEW_THREAD", thread: { ...SAMPLE_PCB_THREAD, updatedAt: Date.now() } });
       case "sendMessage": return conversation.sendMessage({
         threadId: a ? id(a) : undefined,
         text: text(b),
@@ -297,7 +291,6 @@ export function createRuntime(
       case "changePreset": return conversation.changePreset(a ? id(a) : undefined, text(b));
       case "retryMessage": return conversation.retryMessage(id(a), id(b));
       case "retryRun": return conversation.retryRun(id(a), id(b));
-      case "promoteThread": return conversation.promoteThread(id(a));
       case "updateBrief": return conversation.updateBrief(id(a), b as Brief);
       case "patchFinding": return conversation.patchFinding(id(a), text(b));
       case "resolveConfirmation": return conversation.resolveConfirmation(id(a), id(b), c === true);

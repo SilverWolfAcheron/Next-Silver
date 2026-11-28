@@ -211,7 +211,6 @@ export interface Messages {
     openFolder: string;
     desktopOnlyHint: string;
     noFolderHint: string;
-    treeLabel: string;
     loading: string;
     reconnecting: string;
     reconnect: string;
@@ -256,8 +255,6 @@ export interface Messages {
     modelPlaceholder: string;
     testing: string;
     testConnection: string;
-    saveFailed: string;
-    connectFailed: string;
     modelsFetched: (count: number) => string;
     noModelsReturned: string;
   };
@@ -273,8 +270,6 @@ export interface Messages {
     };
     emptyBrief: string;
     emptyProgress: string;
-    emptyArtifact: string;
-    promoteToProject: string;
   };
 
   brief: {
@@ -361,7 +356,6 @@ export interface Messages {
     truncatedWorkspace: string;
     filesSummary: (count: number) => string;
     changedTreeEmpty: string;
-    changedTreeHeader: (count: number) => string;
     agentArtifactLabel: string;
     agentArtifactFiles: (count: number) => string;
     agentArtifactSettled: string;

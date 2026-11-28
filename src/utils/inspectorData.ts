@@ -1,4 +1,4 @@
-import type { Artifact, Run } from "../agent-core/types";
+import type { Run } from "../agent-core/types";
 import type { FindingSection, ParallelRunEntry } from "../types/inspector";
 
 export function groupRunsByParallel(runs: Run[]): ParallelRunEntry[] {
@@ -21,16 +21,6 @@ export function groupRunsByParallel(runs: Run[]): ParallelRunEntry[] {
   }
 
   return entries;
-}
-
-export function groupArtifactsByRun(artifacts: Artifact[]): Map<string | undefined, Artifact[]> {
-  const groups: Map<string | undefined, Artifact[]> = new Map();
-  for (const artifact of artifacts) {
-    const group: Artifact[] | undefined = groups.get(artifact.runId);
-    if (group) group.push(artifact);
-    else groups.set(artifact.runId, [artifact]);
-  }
-  return groups;
 }
 
 export function splitFindingSections(body: string): FindingSection[] {

@@ -107,7 +107,7 @@ interface DevelopContext {
   signal: AbortSignal;
 }
 
-export interface RunSeatOptions {
+interface RunSeatOptions {
   thread: Thread;
   run: Run;
   seat: AgentSeat;

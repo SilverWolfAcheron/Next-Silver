@@ -20,7 +20,7 @@ export function detectLineEnding(content: string): LineEnding {
   return content.includes("\r\n") ? "\r\n" : FILE_EDIT_DEFAULT_LINE_ENDING;
 }
 
-export function normalizeLineEndings(content: string): string {
+function normalizeLineEndings(content: string): string {
   return content.replace(/\r\n/gu, "\n");
 }
 

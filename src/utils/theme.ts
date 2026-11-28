@@ -1,7 +1,7 @@
 import { syncWindowTheme } from "../services/desktopClient";
 import type { RgbTuple } from "../types/common";
 
-export function parseHexColor(value: string, fallback: RgbTuple): RgbTuple {
+function parseHexColor(value: string, fallback: RgbTuple): RgbTuple {
   const hex: string = value.trim().replace(/^#/u, "");
   if (!/^[0-9a-fA-F]{6}$/u.test(hex)) return fallback;
   return [

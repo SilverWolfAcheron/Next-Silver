@@ -229,7 +229,6 @@ export const jaMessages: Messages = {
     openFolder: "フォルダを開く",
     desktopOnlyHint: "Silver デスクトップアプリからローカルフォルダを開いてください。",
     noFolderHint: "フォルダが開かれていません。",
-    treeLabel: "プロジェクトファイル",
     loading: "読み込み中…",
     reconnecting: "再接続中…",
     reconnect: "再接続",
@@ -274,8 +273,6 @@ export const jaMessages: Messages = {
     modelPlaceholder: "モデル ID を選択または入力",
     testing: "接続テスト中…",
     testConnection: "接続テスト",
-    saveFailed: "プロバイダーの保存に失敗しました。",
-    connectFailed: "プロバイダーへの接続に失敗しました。",
     modelsFetched: (count: number): string => `接続成功、${count} 件のモデルを取得しました。`,
     noModelsReturned: "接続成功しましたが、利用可能なモデルは返されませんでした。",
   },
@@ -291,8 +288,6 @@ export const jaMessages: Messages = {
     },
     emptyBrief: "目標が定まるとブリーフが表示されます",
     emptyProgress: "作業が割り当てられると進捗が表示されます",
-    emptyArtifact: "成果物はまだありません",
-    promoteToProject: "プロジェクト化",
   },
 
   brief: {
@@ -392,7 +387,6 @@ export const jaMessages: Messages = {
     truncatedWorkspace: "未追跡ファイルが多いため一部は省略されています。",
     filesSummary: (count: number): string => `${count} 件の変更ファイル`,
     changedTreeEmpty: "変更されたファイルはありません",
-    changedTreeHeader: (count: number): string => `変更 (${count})`,
     agentArtifactLabel: "Agent 変更提案",
     agentArtifactFiles: (count: number): string => `${count} 件のファイル`,
     agentArtifactSettled: "処理済み",

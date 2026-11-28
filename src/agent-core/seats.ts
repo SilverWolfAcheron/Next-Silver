@@ -2,7 +2,7 @@ import { isDiffPath } from "../utils/diff.ts";
 import { AppError, ERROR_CODES } from "./errors.ts";
 import type { AgentSeat, Run } from "./types";
 
-export const DEFAULT_DEVELOP_CONCURRENCY: number = 16;
+const DEFAULT_DEVELOP_CONCURRENCY: number = 16;
 export const MAX_AUDIT_CONCURRENCY: number = 4;
 export const SCOPE_WAIT_NOTE: string = "范围与正在写的席位重叠";
 

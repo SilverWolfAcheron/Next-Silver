@@ -38,64 +38,6 @@ export interface TextLineDeleteResult {
   deletedCount: number;
 }
 
-export interface DeleteFileParams {
-  workspace: WorkspaceSummary;
-  path: string;
-  expectedBefore?: string;
-}
-
-export interface DeleteDirectoryParams {
-  workspace: WorkspaceSummary;
-  path: string;
-  recursive?: boolean;
-}
-
-export interface CreateFileParams {
-  workspace: WorkspaceSummary;
-  path: string;
-  content?: string;
-  overwrite?: boolean;
-  createParents?: boolean;
-}
-
-export interface CreateDirectoryParams {
-  workspace: WorkspaceSummary;
-  path: string;
-  recursive?: boolean;
-}
-
-export interface RenamePathParams {
-  workspace: WorkspaceSummary;
-  fromPath: string;
-  toPath: string;
-  overwrite?: boolean;
-}
-
-export interface ReplaceFileLinesParams {
-  workspace: WorkspaceSummary;
-  path: string;
-  startLine: number;
-  endLine: number;
-  replacement: string;
-  expectedBefore?: string;
-}
-
-export interface AppendFileParams {
-  workspace: WorkspaceSummary;
-  path: string;
-  content: string;
-  ensureNewline?: boolean;
-  createIfMissing?: boolean;
-}
-
-export interface DeleteFileLinesParams {
-  workspace: WorkspaceSummary;
-  path: string;
-  startLine: number;
-  endLine: number;
-  expectedBefore?: string;
-}
-
 export interface ReplaceFileContentParams {
   workspace: WorkspaceSummary;
   path: string;

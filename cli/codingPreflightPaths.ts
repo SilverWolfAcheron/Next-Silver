@@ -18,7 +18,7 @@ export function codingPathKey(path: string): string {
   return path.normalize("NFC").toLowerCase();
 }
 
-export function isCodingReviewPath(path: string): boolean {
+function isCodingReviewPath(path: string): boolean {
   if (path.length > CODING_PREFLIGHT_MAX_PATH_CHARS) return false;
   try {
     return splitWorkspacePath(path).length > 0;

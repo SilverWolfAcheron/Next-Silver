@@ -13,7 +13,7 @@ import { pauseIterations } from "./iterate";
  * - A domain field change is treated as a change to the requirement it binds
  *   to. Binding lives in the domain pack data (e.g. PCB stackup -> R1).
  */
-export interface ReconcileOptions {
+interface ReconcileOptions {
   before: Brief | null;
   after: Brief | null;
   runs: Run[];

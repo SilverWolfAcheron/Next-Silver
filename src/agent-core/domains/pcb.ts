@@ -4,7 +4,7 @@ export interface DomainField {
   requirementBinding?: string;
 }
 
-export interface SeedQuestion {
+interface SeedQuestion {
   fieldKey: string;
   question: string;
 }
@@ -17,7 +17,7 @@ export interface DomainPack {
   artifactTitles: string[];
 }
 
-export const PCB_DOMAIN: DomainPack = {
+const PCB_DOMAIN: DomainPack = {
   id: "pcb",
   label: "PCB 设计",
   fields: [

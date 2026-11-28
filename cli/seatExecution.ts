@@ -14,19 +14,19 @@ import type { SilverState } from "../src/agent-core/silverState";
 import type { RequestJournal } from "./journal";
 import type { ModelRequest } from "./conversationHelpers";
 
-export interface SeatRunOutcome {
+interface SeatRunOutcome {
   status: "completed" | "blocked";
   artifacts: Artifact[];
 }
 
-export interface ExecuteSeatRunOptions {
+interface ExecuteSeatRunOptions {
   thread: Thread;
   run: Run;
   client: ModelClient;
   request: ModelRequest;
 }
 
-export interface SeatExecution {
+interface SeatExecution {
   executeRun(options: ExecuteSeatRunOptions): Promise<SeatRunOutcome | undefined>;
   requestPulse(): void;
 }

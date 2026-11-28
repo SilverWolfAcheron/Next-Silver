@@ -17,13 +17,11 @@ import { FILE_EDIT_MAX_TEXT_BYTES } from "../src/constants/fileEdit.ts";
 import type {
   CodingPreflightIssue,
   CodingPreflightReport,
-  CodingPreflightSummary,
   CodingPreflightWrite,
   CodingSnapshotResult,
 } from "../src/types/codingPreflight.ts";
 import {
   preflightCodingChanges,
-  summarizeCodingPreflight,
   verifyCodingWriteSnapshot,
 } from "./codingPreflight.ts";
 import { bindWorkspace, subscribeWorkspaceChanges, writeWorkspaceFile } from "./workspace.ts";
@@ -116,22 +114,6 @@ test("preflight snapshots a mixed batch without creating parents, emitting event
   });
 });
 
-test("summary makes snapshots, raw patch, title and untouched source impossible to serialize accidentally", async (): Promise<void> => {
-  await withWorkspace(async ({ workspace, patch, set }: Fixture): Promise<void> => {
-    await set("program.txt", "development-only fixture\nprivate untouched value\n");
-    const report: CodingPreflightReport = await preflightCodingChanges(workspace, [
-      patch(updatePatch("program.txt", "development-only fixture", "new private value"), { title: "secret title" }),
-    ]);
-    assert.equal(report.status, "ready");
-    const summary: CodingPreflightSummary = summarizeCodingPreflight(report);
-    const serialized: string = JSON.stringify(summary);
-    assert.deepEqual(Object.keys(summary).sort(), ["files", "issues", "stats", "status"]);
-    for (const secret of ["private untouched value", "new private value", "secret title", "development-only fixture"]) {
-      assert.ok(!serialized.includes(secret));
-    }
-  });
-});
-
 test("does not reuse a foreign or unbound artifact; documents may be foreign and are ignored", async (): Promise<void> => {
   await withWorkspace(async ({ workspace, patch, root }: Fixture): Promise<void> => {
     const report: CodingPreflightReport = await preflightCodingChanges(workspace, [
@@ -211,7 +193,7 @@ test("captures malformed hunk errors, prevents partial application and omits uns
       ["malformed", ERROR_CODES.DIFF_PATH_OUTSIDE_WORKSPACE, undefined],
       ["malformed", ERROR_CODES.DIFF_HEADER_MISSING, undefined],
     ]);
-    assert.ok(!JSON.stringify(summarizeCodingPreflight(report)).includes(root));
+    assert.ok(!JSON.stringify(report).includes(root));
     assert.equal(report.stats.verified, 1);
     assert.deepEqual(report.writes, []);
     assert.deepEqual(await readdir(root), []);
@@ -331,7 +313,7 @@ test("stale model context receives bounded exact re-read coordinates, never auto
     assert.deepEqual(first.params, { path: "shifted.ts", expectedLine: 1, nearbyLine: 2 });
     assert.equal(first.nearbyLine, 2);
     assert.deepEqual(result.writes, []);
-    assert.ok(!JSON.stringify(summarizeCodingPreflight(result)).includes("private"));
+    assert.ok(!JSON.stringify(result).includes("private"));
     assert.equal(await read("shifted.ts"), "manual edit\nconst hidden = 'private';\nexport const next = 1;\n");
 
     await set("shifted.ts", "manual edit\nconst hidden = 'private';\nexport const next = 1;\nconst hidden = 'private';\nexport const next = 1;\n");

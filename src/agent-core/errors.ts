@@ -69,7 +69,7 @@ export function isTimeoutError(error: unknown): boolean {
   return false;
 }
 
-export function isAbortError(error: unknown): boolean {
+function isAbortError(error: unknown): boolean {
   if (error instanceof AppError) return error.code === ERROR_CODES.REQUEST_ABORTED;
   if (typeof error === "object" && error !== null && "name" in error && error.name === "AbortError") {
     return true;

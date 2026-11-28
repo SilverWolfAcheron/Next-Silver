@@ -17,7 +17,6 @@ import type {
   CodingPreflightReport,
   CodingPreflightStats,
   CodingPreflightStatus,
-  CodingPreflightSummary,
   CodingPreflightWrite,
 } from "../src/types/codingPreflight.ts";
 import type { DiffFile, FileChange } from "../src/types/diff.ts";
@@ -76,12 +75,6 @@ function summarize(state: ReviewState): CodingPreflightReport {
   const status: CodingPreflightStatus = issues.some(({ severity }: CodingPreflightIssue): boolean => severity === "error")
     ? "invalid" : issues.length ? "needs_confirmation" : "ready";
   return { status, issues, files, stats, writes: status === "invalid" ? [] : state.writes };
-}
-
-/** Explicit allowlist: the original and post-patch text must stay on the CLI. */
-export function summarizeCodingPreflight(report: CodingPreflightReport): CodingPreflightSummary {
-  const { status, issues, files, stats }: CodingPreflightReport = report;
-  return { status, issues, files, stats };
 }
 
 // Bound line-object allocations before splitting model-controlled text in the diff parser.

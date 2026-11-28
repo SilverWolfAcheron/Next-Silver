@@ -69,7 +69,7 @@ function appendNodesByLine(
   }
 }
 
-export function splitHastLines(nodes: ElementContent[]): ElementContent[][] {
+function splitHastLines(nodes: ElementContent[]): ElementContent[][] {
   const lines: ElementContent[][] = [[]];
   appendNodesByLine(nodes, lines);
   return lines;

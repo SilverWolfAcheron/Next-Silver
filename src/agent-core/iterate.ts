@@ -166,14 +166,18 @@ export function nextIterationDecision(run: IterationRun, judgment: IterationJudg
   return { status: "in_progress", iteration, action: requiresApproval ? "approve" : "continue", nextTitle: checked.nextTitle, note };
 }
 
-export interface JudgmentInputOptions {
+interface JudgmentInputOptions {
   brief: Brief;
-  run: IterationRun;
+  run: IterationRun & Partial<Pick<Run, "title" | "supplements">>;
   products: Pick<Artifact, "kind" | "title" | "body">[];
   requiredChecks?: readonly string[];
 }
 
 export function buildJudgmentInput(options: JudgmentInputOptions): {
+  workItem?: string;
+  roundGoal?: string;
+  outcome: string;
+  supplements: string[];
   requirements: { id: string; text: string }[];
   constraints: string;
   outOfScope: string[];
@@ -186,8 +190,13 @@ export function buildJudgmentInput(options: JudgmentInputOptions): {
 } {
   const { brief, run, products, requiredChecks = [] }: JudgmentInputOptions = options;
   const iterations: Iteration[] = run.iterations ?? [];
-  const checks: IterationCheck[] = iterations.at(-1)?.checks ?? [];
+  const current: Iteration | undefined = iterations.at(-1);
+  const checks: IterationCheck[] = current?.checks ?? [];
   return {
+    workItem: run.title,
+    roundGoal: current?.title,
+    outcome: brief.outcome,
+    supplements: run.supplements ?? [],
     requirements: run.dependsOn.length
       ? brief.requirements.filter(({ id }: { id: string }): boolean => run.dependsOn.includes(id))
       : [{ id: "goal", text: brief.intent }],

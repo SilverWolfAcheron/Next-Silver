@@ -31,7 +31,6 @@ export const zhErrors: ErrorMessages = {
   PROVIDER_ADDRESS_INVALID: "供应商地址格式不正确。",
   PROVIDER_ADDRESS_CREDENTIALS_FORBIDDEN: "供应商地址不能包含用户名或密码。",
   PROVIDER_ADDRESS_PROTOCOL_INVALID: "供应商地址必须使用 http 或 https。",
-  PROVIDER_ADDRESS_INSECURE: "远程供应商地址必须使用 https。",
   PROVIDER_KEY_REQUIRED: "请填写供应商密钥。",
   PROVIDER_MODEL_REQUIRED: "请选择供应商模型。",
   PROVIDER_SAVE_FAILED: "保存供应商失败。",
@@ -45,7 +44,7 @@ export const zhErrors: ErrorMessages = {
   SESSION_RUN_NOT_FOUND: "找不到工作项。",
   SESSION_THREAD_NOT_FOUND: "找不到此对话。",
   SESSION_TOOL_LIMIT_EXCEEDED: "单次工具请求最多包含四项。",
-  ITERATION_JUDGMENT_INVALID: "判断结果无法读取，可以重试。",
+  ITERATION_JUDGMENT_INVALID: "模型的结果判断未通过校验。重试可从当前轮次继续。",
   ITERATION_NONE_ACTIVE: "当前没有进行中的轮次。",
   ITERATION_CURRENT_MISSING: "找不到当前轮次。",
   ITERATION_CONFLICTING_DIFF: "同一轮包含冲突的文件差异，请重试。",
@@ -69,17 +68,8 @@ export const zhErrors: ErrorMessages = {
   SEAT_AUDIT_ITEM_INVALID: "审计结论缺少发现编号、有效判定或独立理由，可以重试。",
   SEAT_AUDIT_REASONING_INVALID: "审计理由重复或只是复述开发发现，可以重试。",
   SEAT_DRAFTS_INVALID: "开发席位只能提交属于当前工作区的完整文本差异。",
-  SEAT_DIFF_UNVERIFIABLE: "差异含有无法验证的文件或差异块。",
   SEAT_SCOPE_EXCEEDED: (params: ErrorParams): string =>
     `差异超出席位范围：${paramText(params, "path")}`,
-  SEAT_DIFF_DUPLICATE_FILE: (params: ErrorParams): string =>
-    `差异中重复提交了文件：${paramText(params, "path")}`,
-  SEAT_DIFF_VERIFY_FAILED: (params: ErrorParams): string => {
-    const detail: string = paramText(params, "detail");
-    return detail
-      ? `无法核对差异 ${paramText(params, "path")}。${detail}`
-      : `无法核对差异 ${paramText(params, "path")}。`;
-  },
   SEAT_STATUS_INVALID: "开发席位回复缺少有效状态，可以重试。",
   SEAT_SUMMARY_MISSING: "开发席位回复缺少工作摘要，可以重试。",
   SEAT_NOT_ENABLED: "当前预设未启用开发与审计席位。",

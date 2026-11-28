@@ -25,7 +25,6 @@ export type ErrorCode =
   | "PROVIDER_ADDRESS_INVALID"
   | "PROVIDER_ADDRESS_CREDENTIALS_FORBIDDEN"
   | "PROVIDER_ADDRESS_PROTOCOL_INVALID"
-  | "PROVIDER_ADDRESS_INSECURE"
   | "PROVIDER_KEY_REQUIRED"
   | "PROVIDER_MODEL_REQUIRED"
   | "PROVIDER_SAVE_FAILED"
@@ -61,10 +60,7 @@ export type ErrorCode =
   | "SEAT_AUDIT_ITEM_INVALID"
   | "SEAT_AUDIT_REASONING_INVALID"
   | "SEAT_DRAFTS_INVALID"
-  | "SEAT_DIFF_UNVERIFIABLE"
   | "SEAT_SCOPE_EXCEEDED"
-  | "SEAT_DIFF_DUPLICATE_FILE"
-  | "SEAT_DIFF_VERIFY_FAILED"
   | "SEAT_STATUS_INVALID"
   | "SEAT_SUMMARY_MISSING"
   | "SEAT_NOT_ENABLED"
@@ -199,7 +195,7 @@ export interface ParsedErrorCode {
   params?: ErrorParams;
 }
 
-export type ErrorMessageFormatter = (params: ErrorParams) => string;
+type ErrorMessageFormatter = (params: ErrorParams) => string;
 
 export type ErrorMessageEntry = string | ErrorMessageFormatter;
 

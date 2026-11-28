@@ -22,7 +22,7 @@ export interface ProjectScan {
   truncated: boolean;
 }
 
-export interface ProjectDirectoryOptions {
+interface ProjectDirectoryOptions {
   directory: string;
   signal?: AbortSignal;
 }

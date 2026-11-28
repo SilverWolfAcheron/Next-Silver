@@ -20,9 +20,9 @@ export interface ModelRequest {
   track: TrackAgentOperation;
 }
 
-export type Worker = (client: ModelClient, request: ModelRequest) => Promise<void>;
-export type Confirmation = NonNullable<ChatMessage["confirm"]>;
-export type ConfirmationAction = PendingConfirmation extends infer P
+type Worker = (client: ModelClient, request: ModelRequest) => Promise<void>;
+type Confirmation = NonNullable<ChatMessage["confirm"]>;
+type ConfirmationAction = PendingConfirmation extends infer P
   ? P extends PendingConfirmation
     ? Omit<P, "messageId">
     : never
@@ -48,7 +48,6 @@ export interface ConversationService {
   retryRun: (threadId: string, runId: string) => void;
   resolveConfirmation: (threadId: string, messageId: string, accepted: boolean) => void;
   updateBrief: (threadId: string, brief: Brief) => void;
-  promoteThread: (threadId: string) => void;
   patchFinding: (threadId: string, text: string) => void;
   resumeQueued: (threadId?: string) => void;
   rescheduleSeats: () => void;

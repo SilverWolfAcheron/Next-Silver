@@ -457,21 +457,6 @@ export function createConversation(deps: ConversationDeps): ConversationService 
     }
   }
 
-  function promoteThread(threadId: string): void {
-    const thread: Thread | undefined = find(threadId);
-    if (thread?.mode !== "single" || thread.pendingConfirmation) return;
-    confirm({
-      threadId,
-      action: { kind: "promote" },
-      labels: {
-        intent: "steer",
-        summary: "根据当前对话建立简报，已有产物会保留。",
-        acceptLabel: "升成项目",
-        declineLabel: "取消",
-      },
-    });
-  }
-
   function retryRun(threadId: string, runId: string): void {
     const thread: Thread | undefined = find(threadId);
     const run: Run | undefined = thread?.runs.find(({ id }: Run): boolean => id === runId);
@@ -520,7 +505,7 @@ export function createConversation(deps: ConversationDeps): ConversationService 
     const thread: Thread | undefined = find(threadId);
     const action: PendingConfirmation | undefined = thread?.pendingConfirmation;
     if (!thread || action?.messageId !== messageId) return;
-    if (accepted && (action.kind === "promote" || action.kind === "run") && !providerFor(thread)) {
+    if (accepted && action.kind === "run" && !providerFor(thread)) {
       dispatch({ type: "SET_PROVIDER_PANEL_OPEN", open: true });
       return;
     }
@@ -587,13 +572,6 @@ export function createConversation(deps: ConversationDeps): ConversationService 
               run.id === action.runId ? { ...run, status: "paused", note: "用户暂缓，可重试" } : run
             ),
           }));
-        }
-        break;
-      case "promote":
-        if (accepted) {
-          applyPreset(thread, "develop");
-          const current: Thread | undefined = find(threadId);
-          if (current && recent) flow.process(current, recent);
         }
         break;
       case "iteration": {
@@ -749,7 +727,6 @@ export function createConversation(deps: ConversationDeps): ConversationService 
     retryRun,
     resolveConfirmation,
     updateBrief: flow.updateBrief,
-    promoteThread,
     patchFinding,
     resumeQueued(threadId?: string): void {
       if (threadId) flow.pump(threadId);

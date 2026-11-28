@@ -6,7 +6,7 @@ export type CodingPluginCatalogEntry =
   | { id: "workspace"; operations: readonly ("overview" | "find-symbol")[] }
   | { id: "verification"; operations: readonly "inspect-checks"[] };
 
-export type CodingPluginOutput =
+type CodingPluginOutput =
   | { plugin: "workspace"; operation: "overview"; output: CodingProject }
   | { plugin: "workspace"; operation: "find-symbol"; output: CodingSymbolResult }
   | { plugin: "verification"; operation: "inspect-checks"; output: CheckAvailability[] };

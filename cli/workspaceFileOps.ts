@@ -31,35 +31,35 @@ import {
   workspaceRoot,
 } from "./workspace.ts";
 
-export interface DeleteFileOpInput {
+interface DeleteFileOpInput {
   path: string;
   expectedBefore?: string;
 }
 
-export interface DeleteDirectoryOpInput {
+interface DeleteDirectoryOpInput {
   path: string;
   recursive?: boolean;
 }
 
-export interface CreateFileOpInput {
+interface CreateFileOpInput {
   path: string;
   content?: string;
   overwrite?: boolean;
   createParents?: boolean;
 }
 
-export interface CreateDirectoryOpInput {
+interface CreateDirectoryOpInput {
   path: string;
   recursive?: boolean;
 }
 
-export interface RenameOpInput {
+interface RenameOpInput {
   fromPath: string;
   toPath: string;
   overwrite?: boolean;
 }
 
-export interface ReplaceLinesOpInput {
+interface ReplaceLinesOpInput {
   path: string;
   startLine: number;
   endLine: number;
@@ -67,21 +67,21 @@ export interface ReplaceLinesOpInput {
   expectedBefore?: string;
 }
 
-export interface AppendFileOpInput {
+interface AppendFileOpInput {
   path: string;
   content: string;
   ensureNewline?: boolean;
   createIfMissing?: boolean;
 }
 
-export interface DeleteLinesOpInput {
+interface DeleteLinesOpInput {
   path: string;
   startLine: number;
   endLine: number;
   expectedBefore?: string;
 }
 
-export interface ReplaceContentOpInput {
+interface ReplaceContentOpInput {
   path: string;
   content: string;
   expectedBefore?: string | null;

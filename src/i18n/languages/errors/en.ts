@@ -31,7 +31,6 @@ export const enErrors: ErrorMessages = {
   PROVIDER_ADDRESS_INVALID: "Invalid provider URL format.",
   PROVIDER_ADDRESS_CREDENTIALS_FORBIDDEN: "Provider URL cannot contain a username or password.",
   PROVIDER_ADDRESS_PROTOCOL_INVALID: "Provider URL must use http or https.",
-  PROVIDER_ADDRESS_INSECURE: "Remote provider URLs must use https.",
   PROVIDER_KEY_REQUIRED: "Enter a provider API key.",
   PROVIDER_MODEL_REQUIRED: "Select a provider model.",
   PROVIDER_SAVE_FAILED: "Failed to save provider.",
@@ -45,7 +44,7 @@ export const enErrors: ErrorMessages = {
   SESSION_RUN_NOT_FOUND: "Work item not found.",
   SESSION_THREAD_NOT_FOUND: "Conversation not found.",
   SESSION_TOOL_LIMIT_EXCEEDED: "At most four tool requests are allowed per round.",
-  ITERATION_JUDGMENT_INVALID: "Could not read judgment result. You can retry.",
+  ITERATION_JUDGMENT_INVALID: "The model's judgment failed validation. Retry to resume the current iteration.",
   ITERATION_NONE_ACTIVE: "No active round is currently in progress.",
   ITERATION_CURRENT_MISSING: "Current round not found.",
   ITERATION_CONFLICTING_DIFF: "Conflicting file diffs in the same round. Please retry.",
@@ -69,17 +68,8 @@ export const enErrors: ErrorMessages = {
   SEAT_AUDIT_ITEM_INVALID: "Audit decision is missing an index, valid verdict, or reason. You can retry.",
   SEAT_AUDIT_REASONING_INVALID: "Audit reasoning is duplicated or merely echoes the finding. You can retry.",
   SEAT_DRAFTS_INVALID: "Developer seats may only submit complete text diffs for the current workspace.",
-  SEAT_DIFF_UNVERIFIABLE: "Diff contains an unverifiable file or hunk.",
   SEAT_SCOPE_EXCEEDED: (params: ErrorParams): string =>
     `Diff path is outside seat scope: ${paramText(params, "path")}`,
-  SEAT_DIFF_DUPLICATE_FILE: (params: ErrorParams): string =>
-    `Duplicate file submitted in diff: ${paramText(params, "path")}`,
-  SEAT_DIFF_VERIFY_FAILED: (params: ErrorParams): string => {
-    const detail: string = paramText(params, "detail");
-    return detail
-      ? `Unable to verify diff for ${paramText(params, "path")}. ${detail}`
-      : `Unable to verify diff for ${paramText(params, "path")}.`;
-  },
   SEAT_STATUS_INVALID: "Developer seat reply is missing a valid status. You can retry.",
   SEAT_SUMMARY_MISSING: "Developer seat reply is missing a work summary. You can retry.",
   SEAT_NOT_ENABLED: "Developer and audit seats are not enabled for the current preset.",

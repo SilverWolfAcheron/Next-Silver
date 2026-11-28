@@ -31,7 +31,6 @@ export const jaErrors: ErrorMessages = {
   PROVIDER_ADDRESS_INVALID: "プロバイダー URL の形式が正しくありません。",
   PROVIDER_ADDRESS_CREDENTIALS_FORBIDDEN: "プロバイダー URL にユーザー名やパスワードを含めることはできません。",
   PROVIDER_ADDRESS_PROTOCOL_INVALID: "プロバイダー URL は http または https である必要があります。",
-  PROVIDER_ADDRESS_INSECURE: "リモートプロバイダー URL には https を使用してください。",
   PROVIDER_KEY_REQUIRED: "プロバイダーキーを入力してください。",
   PROVIDER_MODEL_REQUIRED: "モデルを選択してください。",
   PROVIDER_SAVE_FAILED: "プロバイダーの保存に失敗しました。",
@@ -45,7 +44,7 @@ export const jaErrors: ErrorMessages = {
   SESSION_RUN_NOT_FOUND: "作業項目が見つかりません。",
   SESSION_THREAD_NOT_FOUND: "この会話が見つかりません。",
   SESSION_TOOL_LIMIT_EXCEEDED: "1 回のツール要求は最大 4 件までです。",
-  ITERATION_JUDGMENT_INVALID: "判定結果を読み取れませんでした。再試行できます。",
+  ITERATION_JUDGMENT_INVALID: "モデルの判定結果を検証できませんでした。再試行すると現在の反復から再開します。",
   ITERATION_NONE_ACTIVE: "現在進行中のラウンドはありません。",
   ITERATION_CURRENT_MISSING: "現在のラウンドが見つかりません。",
   ITERATION_CONFLICTING_DIFF: "同じラウンドに競合するファイル差分が含まれています。再試行してください。",
@@ -69,17 +68,8 @@ export const jaErrors: ErrorMessages = {
   SEAT_AUDIT_ITEM_INVALID: "監査結果に番号・有効な判定・独立した理由が不足しています。再試行できます。",
   SEAT_AUDIT_REASONING_INVALID: "監査理由が重複しているか、開発指摘の言い換えに過ぎません。再試行できます。",
   SEAT_DRAFTS_INVALID: "開発シートは現在のワークスペースに属する完全なテキスト差分のみ提出できます。",
-  SEAT_DIFF_UNVERIFIABLE: "差分に検証できないファイルまたはハンクが含まれています。",
   SEAT_SCOPE_EXCEEDED: (params: ErrorParams): string =>
     `差分がシート範囲外です：${paramText(params, "path")}`,
-  SEAT_DIFF_DUPLICATE_FILE: (params: ErrorParams): string =>
-    `差分に同一ファイルが重複しています：${paramText(params, "path")}`,
-  SEAT_DIFF_VERIFY_FAILED: (params: ErrorParams): string => {
-    const detail: string = paramText(params, "detail");
-    return detail
-      ? `差分 ${paramText(params, "path")} を検証できません。${detail}`
-      : `差分 ${paramText(params, "path")} を検証できません。`;
-  },
   SEAT_STATUS_INVALID: "開発シートの応答に有効なステータスがありません。再試行できます。",
   SEAT_SUMMARY_MISSING: "開発シートの応答に作業サマリーがありません。再試行できます。",
   SEAT_NOT_ENABLED: "現在のプリセットでは開発・監査シートが有効になっていません。",

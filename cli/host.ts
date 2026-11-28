@@ -96,11 +96,6 @@ export function saveStateSync(dataDir: string, value: unknown): void {
   writePrivateJson(join(dataDir, STATE_FILE), value);
 }
 
-export function saveState(dataDir: string, value: unknown): Promise<void> {
-  saveStateSync(dataDir, value);
-  return Promise.resolve();
-}
-
 export async function readEndpoint(dataDir: string = appDataDir()): Promise<Endpoint | undefined> {
   const value: unknown = await readJson(join(dataDir, ENDPOINT_FILE)).catch((): undefined => undefined);
   if (typeof value !== "object" || value === null) return;

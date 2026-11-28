@@ -45,21 +45,9 @@
 
   --font-sans: "LXGW Neo XiHei", "Yu Gothic UI", "Microsoft YaHei UI", sans-serif;
   --font-mono: "IBM Plex Mono", "LXGW Neo XiHei", ui-monospace, "Cascadia Mono", Consolas, monospace;
-  --font-family-sans: var(--font-sans);
 
-  --font-size-large: 34px;
   --font-size-body: 17px;
-  --font-size-footnote: 13px;
-  --font-size-caption: 12px;
-
   --line-height-body: 22px;
-  --line-height-footnote: 18px;
-
-  --radius-row: 10px;
-  --radius-card: 12px;
-  --radius-input: 22px;
-
-  --transition-motion: 200ms ease;
 }
 
 .dark {

@@ -27,7 +27,7 @@ interface Binding extends WorkspaceSummary {
   inode: string;
 }
 
-export class WorkspaceAccessError extends AppError {
+class WorkspaceAccessError extends AppError {
   readonly reason: "permission" | "unavailable";
 
   constructor(reason: "permission" | "unavailable", code: ErrorCode, options?: AppErrorOptions) {
@@ -155,10 +155,6 @@ export async function requestWorkspaceAccess(workspace: WorkspaceSummary): Promi
   await access(await workspaceRoot(workspace), constants.R_OK);
 }
 
-export async function requestWorkspaceWriteAccess(workspace: WorkspaceSummary): Promise<void> {
-  await access(await workspaceRoot(workspace), constants.R_OK | constants.W_OK);
-}
-
 export function subscribeWorkspaceChanges(workspace: WorkspaceSummary, listener: () => void): () => void {
   dataChanges.on(workspace.id, listener);
   return (): void => {
@@ -282,13 +278,13 @@ interface ReplaceFileOptions {
   expectedBefore: string | null;
 }
 
-export interface WriteWorkspaceFileOptions {
+interface WriteWorkspaceFileOptions {
   path: string;
   after: string | null;
   expectedBefore: string | null;
 }
 
-export interface SearchWorkspaceOptions {
+interface SearchWorkspaceOptions {
   limit?: number;
   signal?: AbortSignal;
 }

@@ -30,7 +30,7 @@ const defaultDeps: RuntimeStoreDeps = {
   selectWorkspace,
 };
 
-export function createRuntimeStore(
+function createRuntimeStore(
   deps: RuntimeStoreDeps = defaultDeps
 ): UseBoundStore<StoreApi<RuntimeStore>> {
   let previousVersions: DesktopSnapshot["workspaceVersions"] = undefined;
@@ -152,8 +152,6 @@ export function createRuntimeStore(
         },
 
         newThread: (presetId: string): void => runAction("newThread", presetId),
-        openSample: (): void => runAction("openSample"),
-        isGenerating: (threadId: string): boolean => get().busyThreads.includes(threadId),
 
         stop: (threadId: string): boolean => {
           if (!get().busyThreads.includes(threadId)) return false;
@@ -182,11 +180,8 @@ export function createRuntimeStore(
           runAction("resolveConfirmation", threadId, messageId, accepted),
         setAutoApproval: (threadId: string, enabled: boolean, workspaceId?: string): void =>
           runAction("setAutoApproval", threadId, enabled, workspaceId),
-        promoteThread: (threadId: string): void => runAction("promoteThread", threadId),
         patchFinding: (threadId: string, finding: string): void =>
           runAction("patchFinding", threadId, finding),
-        bindWorkspace: (threadId: string, workspace: WorkspaceSummary): void =>
-          runAction("bindWorkspace", threadId, workspace.id),
 
         attachWorkspace: async (workspace: WorkspaceSummary): Promise<void> => {
           set({ error: "" });

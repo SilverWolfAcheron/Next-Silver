@@ -105,19 +105,6 @@ export interface SeatRowProps {
   parentTitle?: string;
 }
 
-export interface ArtifactViewProps {
-  artifacts: Artifact[];
-  runs: Run[];
-  workspace?: WorkspaceSummary;
-  writePolicy: WritePolicy;
-  selectedRunId?: string;
-  selectedArtifactId?: string;
-  onPromote?: () => void;
-  onPatchFinding: (finding: string) => void;
-  onFileDecision: (artifact: Artifact, path: string, decision: FileDecision) => void;
-  onAcceptFile: (artifact: Artifact, path: string, confirmed: boolean) => Promise<void>;
-}
-
 export interface DiffArtifactProps {
   artifact: Artifact;
   workspace?: WorkspaceSummary;

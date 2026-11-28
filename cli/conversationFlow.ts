@@ -47,6 +47,7 @@ import type {
 } from "./conversationHelpers";
 import { createWorkspaceToolLoop } from "./workspaceContext";
 import { CODING_TOOL_GUIDE } from "../src/constants/codingTools";
+import { PROJECT_GREETINGS } from "../src/constants/conversation";
 import { produceCodingRound } from "./codingRound";
 
 export interface ConversationFlow {
@@ -460,7 +461,7 @@ export function createConversationFlow(kernel: ConversationKernel): Conversation
             supplements: [...(run.supplements ?? []), text],
             seats: pauseSeats(run.seats, "正在加入补充"),
             iterations: run.iterations?.map((round: Iteration): Iteration =>
-                round.status === "in_progress" && round.stage === "produce"
+                round.status === "in_progress" && !round.approval && (round.stage === "produce" || round.stage === "judge")
                   ? { ...round, attempt: crypto.randomUUID() }
                   : round
             ),
@@ -493,14 +494,20 @@ export function createConversationFlow(kernel: ConversationKernel): Conversation
     execution: { client: ModelClient; request: ModelRequest }
   ): Promise<void> {
     const { client, request }: { client: ModelClient; request: ModelRequest } = execution;
+    const greeting: string | undefined = PROJECT_GREETINGS.get(message.text.trim().replace(/[.!?。！？]+$/u, "").trimEnd().toLowerCase());
+    if (greeting && !message.attachments?.length) {
+      append(thread.id, assistant(greeting), message.id);
+      return;
+    }
     const revision: boolean = identifiesRevision(message.text, thread);
     const prompt: ModelMessage[] = conversationPrompt(
       thread,
       [
         revision
           ? "最新用户消息已经在本地判定为 revise。按消息更新完整简报，保留未修改字段和需求编号。"
-          : "判断最新用户消息的用途：steer（原范围内补充或讨论）、revise（改变简报）、patch（独立的小改动）。修订需返回修改后的完整简报，保留未修改字段和编号。",
-        '只返回 JSON {"intent":"steer|revise|patch","brief":{},"reply":"..."}。reply 是给用户的简短答复。',
+          : "判断最新用户消息的用途：chat（问候、闲聊或询问进度，无需调整工作）、steer（原范围内新增信息或指示）、revise（改变简报）、patch（独立的小改动）。修订需返回修改后的完整简报，保留未修改字段和编号。",
+        `根据工作项的实际状态回答进度：${JSON.stringify(thread.runs.map(({ title, status }: Run): Pick<Run, "title" | "status"> => ({ title, status })))}`,
+        '只返回 JSON {"intent":"chat|steer|revise|patch","brief":{},"reply":"..."}。reply 是给用户的简短答复。',
       ].join("\n"),
       message.id
     );
@@ -519,7 +526,7 @@ export function createConversationFlow(kernel: ConversationKernel): Conversation
       }));
       return;
     }
-    const intent: Intent = revision ? "revise" : readIntent(result.intent);
+    const intent: Intent | "chat" = revision ? "revise" : result.intent === "chat" ? "chat" : readIntent(result.intent);
     if (intent === "revise") {
       const brief: Brief = readBrief(result.brief, current, message.text);
       if (
@@ -538,6 +545,10 @@ export function createConversationFlow(kernel: ConversationKernel): Conversation
     } else if (intent === "patch") {
       append(thread.id, assistant("已打开一条小补丁对话。"), message.id);
       branch(current, message.text, message.attachments);
+    } else if (intent === "chat") {
+      const reply: string = modelString(result.reply);
+      if (!reply) throw new SessionError(ERROR_CODES.SESSION_EMPTY_REPLY);
+      append(thread.id, assistant(reply), message.id);
     } else if (!supplement(current, message.text)) {
       append(thread.id, assistant(modelString(result.reply) || "已记录补充。"), message.id);
     }

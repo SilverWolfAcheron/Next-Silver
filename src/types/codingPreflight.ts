@@ -78,14 +78,11 @@ export interface CodingPreflightWrite {
   after: string | null;
 }
 
-export interface CodingPreflightSummary {
+export interface CodingPreflightReport {
   status: CodingPreflightStatus;
   stats: CodingPreflightStats;
   files: CodingPreflightFile[];
   issues: CodingPreflightIssue[];
-}
-
-export interface CodingPreflightReport extends CodingPreflightSummary {
   /** CLI-only data for guarded writes. Never send this field to a model. */
   writes: CodingPreflightWrite[];
 }

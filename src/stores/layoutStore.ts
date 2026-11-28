@@ -105,6 +105,5 @@ export const useLayoutStore: UseBoundStore<StoreApi<LayoutStore>> = create<Layou
     setAgentTab: (agentTab: AgentTab): void => set({ agentTab }),
     setSearchMode: (searchMode: WorkspaceSearchMode | null): void => set({ searchMode }),
     setFocusedArtifactId: (focusedArtifactId: string | null): void => set({ focusedArtifactId }),
-    closeOverlays: (): void => set({ sidebarOverlay: false, searchMode: null }),
   })
 );

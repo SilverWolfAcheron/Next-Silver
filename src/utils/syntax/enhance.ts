@@ -13,7 +13,7 @@ import {
 } from "../../constants/syntax";
 import { highlightJsxBlock } from "./jsx";
 
-export interface EnhanceCodeOptions {
+interface EnhanceCodeOptions {
   inheritedConstants?: Set<string>;
   onDeclaredConstants?: (declared: Set<string>) => void;
   highlightEmbedded?: (code: string, constants: Set<string>) => ElementContent[];

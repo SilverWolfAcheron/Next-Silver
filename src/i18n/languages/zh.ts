@@ -229,7 +229,6 @@ export const zhMessages: Messages = {
     openFolder: "打开文件夹",
     desktopOnlyHint: "请在 Silver 桌面程序里打开本地文件夹。",
     noFolderHint: "尚未打开文件夹。",
-    treeLabel: "项目文件",
     loading: "正在读取…",
     reconnecting: "正在重新连接…",
     reconnect: "重新连接",
@@ -274,8 +273,6 @@ export const zhMessages: Messages = {
     modelPlaceholder: "选择或输入模型 ID",
     testing: "测试中…",
     testConnection: "测试连接",
-    saveFailed: "保存供应商失败。",
-    connectFailed: "供应商连接失败。",
     modelsFetched: (count: number): string => `连接成功，获取了 ${count} 个模型。`,
     noModelsReturned: "连接成功，供应商未返回可用模型。",
   },
@@ -291,8 +288,6 @@ export const zhMessages: Messages = {
     },
     emptyBrief: "简报将在目标明确后出现",
     emptyProgress: "工作项将在派发后出现",
-    emptyArtifact: "暂无产物",
-    promoteToProject: "升成项目",
   },
 
   brief: {
@@ -392,7 +387,6 @@ export const zhMessages: Messages = {
     truncatedWorkspace: "未跟踪文件较多，部分文件未完整展开。",
     filesSummary: (count: number): string => `${count} 个改动文件`,
     changedTreeEmpty: "暂无改动文件",
-    changedTreeHeader: (count: number): string => `改动 (${count})`,
     agentArtifactLabel: "Agent 改动建议",
     agentArtifactFiles: (count: number): string => `${count} 个文件`,
     agentArtifactSettled: "已处理",
